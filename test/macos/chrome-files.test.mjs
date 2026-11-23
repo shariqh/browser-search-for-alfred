@@ -219,7 +219,9 @@ test("an exclusive lock on History stops a plain read but not the immutable one"
 test("sqlite3 that outlives its deadline is terminated, gives timeout, and its output file is removed", { skip: !darwin }, async () => {
   const fx = fixture();
   const db = await makeHistory(fx);
-  const slow = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 5000000000) SELECT count(*) FROM c";
+  // Counting to 20 million takes sqlite3 about 2.5 s: far past the deadline below, yet short enough that a sqlite3
+  // left behind by an interrupted test run ends by itself.
+  const slow = "WITH RECURSIVE c(x) AS (SELECT 1 UNION ALL SELECT x + 1 FROM c WHERE x < 20000000) SELECT count(*) FROM c";
   const out = await drive(fx, ["sql", db, slow, "300"]);
   assert.deepEqual(out.result, { ok: false, reason: "timeout" });
   assert.ok(out.elapsedMs < 1500, `took ${out.elapsedMs} ms`);
