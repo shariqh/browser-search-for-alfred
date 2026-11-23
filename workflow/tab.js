@@ -138,17 +138,20 @@ function run() {
     const items = loadLib("items");
     const jxa = loadLib("jxa");
 
+    // The Configure Workflow checkboxes: a browser that is switched off is not asked at all.
+    const enabled = loadLib("config").enabledBrowsers(jxa.envVar);
+
     // Send Firefox's request first, list Chrome while Firefox answers, then wait for Firefox.
-    let begun;
+    let begun = { items: [] };
     try {
-      begun = firefoxBegin(items);
+      if (enabled.firefox) begun = firefoxBegin(items);
     } catch (e) {
       begun = { items: [items.firefoxSilentItem()] };
     }
 
     let chrome = [];
     try {
-      chrome = chromeItems(items);
+      if (enabled.chrome) chrome = chromeItems(items);
     } catch (e) {
       // A Chrome failure must not hide Firefox's tabs; it just contributes no items.
     }

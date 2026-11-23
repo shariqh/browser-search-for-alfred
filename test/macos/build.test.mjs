@@ -42,13 +42,38 @@ test("one Script Filter runs tab.js and connects to one Action Script running ac
   const filters = p.objects.filter((o) => o.type === "alfred.workflow.input.scriptfilter");
   assert.equal(filters.length, 1);
   const filter = filters[0];
-  assert.equal(filter.config.keyword, "tab");
+  assert.equal(filter.config.keyword, "{var:keyword_tabs}");
   assert.match(filter.config.script, /osascript -l JavaScript \.\/tab\.js/);
   const actions = p.objects.filter((o) => o.type === "alfred.workflow.action.script");
   assert.equal(actions.length, 1);
   assert.match(actions[0].config.script, /osascript -l JavaScript \.\/act\.js/);
   const targets = (p.connections[filter.uid] || []).map((c) => c.destinationuid);
   assert.deepEqual(targets, [actions[0].uid]);
+});
+
+test("Configure Workflow has three keyword fields and three browser checkboxes", { skip: !darwin }, () => {
+  const keyword = (variable, label, value) => ({
+    type: "textfield",
+    variable,
+    label,
+    description: "",
+    config: { default: value, placeholder: "", required: true, trim: true },
+  });
+  const browser = (variable, label, text) => ({
+    type: "checkbox",
+    variable,
+    label,
+    description: "",
+    config: { default: true, required: false, text },
+  });
+  assert.deepEqual(plistJson().userconfigurationconfig, [
+    keyword("keyword_tabs", "Tabs keyword", "tab"),
+    keyword("keyword_bookmarks", "Bookmarks keyword", "bmk"),
+    keyword("keyword_history", "History keyword", "hist"),
+    browser("browser_firefox", "Browsers", "Firefox"),
+    browser("browser_chrome", "", "Google Chrome"),
+    browser("browser_safari", "", "Safari"),
+  ]);
 });
 
 test("workflow zip has the workflow at its root and an executable helper", { skip: !darwin }, () => {
