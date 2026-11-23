@@ -49,15 +49,17 @@ test("anything that is not a bookmarks tree gives an empty list", () => {
   }
 });
 
-test("historySql: one row per page with its latest visit, words matched against URL and title", () => {
+test("historySql: one row per page with its latest visit of all, the words matched per visit against URL and title", () => {
   const where = likeClause("it's 50%", ["history_items.url", "history_visits.title"]);
   assert.equal(
     historySql("it's 50%", 50),
     "SELECT history_items.url AS url, history_visits.title AS title, MAX(history_visits.visit_time) AS t " +
       "FROM history_items JOIN history_visits ON history_visits.history_item = history_items.id " +
-      `WHERE ${where} GROUP BY history_items.id ORDER BY t DESC LIMIT 50`,
+      "WHERE history_items.id IN (SELECT history_items.id FROM history_items " +
+      `JOIN history_visits ON history_visits.history_item = history_items.id WHERE ${where}) ` +
+      "GROUP BY history_items.id ORDER BY t DESC LIMIT 50",
   );
-  assert.match(historySql("", constants.HISTORY_LIMIT), /WHERE 1 GROUP BY/);
+  assert.match(historySql("", constants.HISTORY_LIMIT), /WHERE 1\) GROUP BY/);
 });
 
 test("safariTimeToMs: seconds since 2001-01-01 UTC as Unix milliseconds", () => {

@@ -30,15 +30,19 @@
     return out;
   }
 
-  // One row per page that matches every typed word in its URL or in the title of one of its visits, carrying the
-  // title and time (`t`, see safariTimeToMs) of its latest visit, newest first. SQLite documents that with a single
-  // MAX() the bare title column comes from the row that holds the maximum.
+  // One row per page, newest first. A page matches when every typed word is in its URL or in the title of one of
+  // its visits (the subquery checks each visit row). The row then carries the title and time (`t`, see
+  // safariTimeToMs) of the page's latest visit of all, not of the latest matching one, so the outer query joins
+  // every visit of the matching pages. SQLite documents that with a single MAX() the bare title column comes from
+  // the row that holds the maximum.
   function historySql(query, limit) {
     const where = sql.likeClause(query, ["history_items.url", "history_visits.title"]);
     return (
       "SELECT history_items.url AS url, history_visits.title AS title, MAX(history_visits.visit_time) AS t " +
       "FROM history_items JOIN history_visits ON history_visits.history_item = history_items.id " +
-      `WHERE ${where} GROUP BY history_items.id ORDER BY t DESC LIMIT ${limit}`
+      "WHERE history_items.id IN (SELECT history_items.id FROM history_items " +
+      `JOIN history_visits ON history_visits.history_item = history_items.id WHERE ${where}) ` +
+      `GROUP BY history_items.id ORDER BY t DESC LIMIT ${limit}`
     );
   }
 

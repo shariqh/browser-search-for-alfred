@@ -141,3 +141,16 @@ test("history words match the URL or the title literally, every word required", 
   const none = await drive(fx, ["safari-history", fx.history, "50_ nothing-here", "2000"]);
   assert.deepEqual(none.result, { ok: true, rows: [] });
 });
+
+test("a page found through an older visit's title still carries its latest visit's title and time", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await execFileAsync(SQLITE, [
+    fx.history,
+    "CREATE TABLE history_items(id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT NOT NULL UNIQUE);\n" +
+      "CREATE TABLE history_visits(id INTEGER PRIMARY KEY AUTOINCREMENT, history_item INTEGER NOT NULL, visit_time REAL NOT NULL, title TEXT);\n" +
+      "INSERT INTO history_items(id, url) VALUES (1, 'https://renamed.example.com/');\n" +
+      `INSERT INTO history_visits(history_item, visit_time, title) VALUES (1, ${T + 100}, 'old name'), (1, ${T + 300}, 'new name');`,
+  ]);
+  const out = await drive(fx, ["safari-history", fx.history, "old", "2000"]);
+  assert.deepEqual(out.result, { ok: true, rows: [{ url: "https://renamed.example.com/", title: "new name", t: T + 300 }] });
+});
