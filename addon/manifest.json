@@ -1,14 +1,14 @@
 {
   "manifest_version": 2,
   "name": "Browser Search for Alfred",
-  "version": "0.1.0",
-  "description": "Lists this browser's tabs and brings one to the front when Alfred asks.",
+  "version": "0.2.0",
+  "description": "Lists this browser's tabs, bookmarks and history for Alfred, and brings a tab to the front.",
   "browser_specific_settings": {
     "gecko": {
       "id": "browser-search-for-alfred@shariqh.github.io"
     }
   },
-  "permissions": ["nativeMessaging", "tabs"],
+  "permissions": ["nativeMessaging", "tabs", "bookmarks", "history"],
   "background": {
     "scripts": ["handler.js", "background.js"],
     "persistent": true

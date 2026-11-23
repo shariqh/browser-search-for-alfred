@@ -21,7 +21,10 @@ const REPLY_NOTIFICATION = "io.github.shariqh.browser-search-for-alfred.reply";
 const ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
 // Only these commands are ever forwarded to Firefox; anything else gets an error reply.
-const ALLOWED_COMMANDS = ["list-tabs", "activate-tab"];
+const ALLOWED_COMMANDS = ["list-tabs", "activate-tab", "list-bookmarks", "search-history"];
+// The add-on checks the same limits again (addon/handler.js has its own copy of these rules).
+const QUERY_MAX_CHARS = 512;
+const HISTORY_MAX_RESULTS = 50;
 // A request is a few hundred bytes; a bigger file is not from our client and is deleted unread.
 const MAX_REQUEST_BYTES = 16 * 1024;
 // Firefox documents 1 MB as the limit for a message to a native host and 4 GB the other way. Tab lists are
@@ -232,9 +235,26 @@ function handleRequestNotification(id) {
       return;
     }
   }
+  if (request.command === "search-history") {
+    const params = request.params;
+    if (
+      params === null ||
+      typeof params !== "object" ||
+      typeof params.query !== "string" ||
+      params.query.length > QUERY_MAX_CHARS ||
+      !Number.isInteger(params.maxResults) ||
+      params.maxResults < 1 ||
+      params.maxResults > HISTORY_MAX_RESULTS
+    ) {
+      writeReply(id, { id, error: "invalid params" });
+      return;
+    }
+  }
+  // These two commands take no parameters, so whatever the request carried is not passed on.
+  const takesParams = request.command === "activate-tab" || request.command === "search-history";
   pending[id] = Date.now();
-  // params is forwarded exactly as received: 0, false and "" are real values.
-  sendToFirefox({ id, command: request.command, params: request.params });
+  // Parameters are forwarded exactly as received: 0, false and "" are real values.
+  sendToFirefox({ id, command: request.command, params: takesParams ? request.params : null });
 }
 
 ObjC.registerSubclass({
