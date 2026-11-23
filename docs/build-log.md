@@ -27,4 +27,12 @@ One snag on the way: the two files were first sent as chat attachments, which he
 
 - Added `bmk` and `hist` for Firefox (through the add-on), Chrome (its files) and Safari (its files), a checkbox per browser and a keyword field per search, and Return / Command-Return actions. Version 0.2.0 for both the workflow and the add-on.
 - Safari's and Chrome's data are protected by macOS: Safari's needs Full Disk Access for Alfred, and Chrome's may need it or the "access data from other apps" question. The workflow shows one "Allow Alfred to read ..." result when it is denied.
-- The real-Firefox check for the new add-on and helper is run by the coordinator and is not recorded here yet.
+- The real-Firefox check passed with the new add-on and helper (`REAL FIREFOX: PASS`, Firefox 160.0.1). It covers tabs only, so real-Firefox bookmarks and history are first tried on the Air.
+- Found on the way: Chrome's own data folder is now protected by macOS 27.3 too (`kTCCServiceSystemPolicyAppDataDetailed`), which the design didn't expect. Chrome's history is read with SQLite's `immutable=1` because Chrome keeps an exclusive lock on it, and Safari's with a normal read-only open so pages still in its write-ahead log show.
+- The reviews caught real bugs before the try-out:
+  - Safari history showed an old title when the search matched an older visit.
+  - ⌘↩ on a `file:` link would have opened the file in its own app, which could run a `.command` script.
+  - The bookmark cache kept notices such as "Set up Firefox" for 5 minutes.
+  - A person's `~/.sqliterc` could silently empty history.
+  - A slow or failing history read made that browser vanish without a word.
+- Tests: 114 unit and 96 macOS.
