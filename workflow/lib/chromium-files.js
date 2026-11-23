@@ -21,11 +21,13 @@
   const isObject = (value) => value !== null && typeof value === "object";
 
   // [{dir, name}] from Local State's profile.info_cache: Default first, then the rest sorted by folder name.
-  // A profile with no name is called by its folder. Without a usable Local State, Default alone.
+  // A profile with no name is called by its folder. Without a usable Local State, Default alone. A folder name
+  // holding a "/", or "." or "..", is not a profile folder of its own inside Chrome's folder, so it is skipped.
   function profilesFromLocalState(text) {
     const state = parse(text);
     const cache = isObject(state) && isObject(state.profile) ? state.profile.info_cache : null;
-    const dirs = isObject(cache) ? Object.keys(cache) : [];
+    const safe = (dir) => !dir.includes("/") && dir !== "." && dir !== "..";
+    const dirs = isObject(cache) ? Object.keys(cache).filter(safe) : [];
     if (dirs.length === 0) return [{ dir: DEFAULT_PROFILE, name: DEFAULT_PROFILE }];
     const rank = (dir) => (dir === DEFAULT_PROFILE ? 0 : 1);
     dirs.sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0));

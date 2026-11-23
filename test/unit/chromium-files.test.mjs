@@ -46,6 +46,19 @@ test("profiles: null, invalid JSON or no info_cache give Default alone", () => {
   assert.deepEqual(profilesFromLocalState(localState({})), fallback);
 });
 
+test("profiles: a folder name with a slash, or . or .., is skipped", () => {
+  const text = localState({
+    "../../x": { name: "Escape" },
+    "a/b": { name: "Nested" },
+    ".": { name: "Here" },
+    "..": { name: "Up" },
+    "Profile 1": { name: "Good" },
+  });
+  assert.deepEqual(profilesFromLocalState(text), [{ dir: "Profile 1", name: "Good" }]);
+  // With only unusable names, Default alone, as with no info_cache.
+  assert.deepEqual(profilesFromLocalState(localState({ "../x": {}, "..": {} })), [{ dir: "Default", name: "Default" }]);
+});
+
 test("profiles: a cache without Default lists only the folders it names", () => {
   assert.deepEqual(profilesFromLocalState(localState({ "Profile 3": { name: "Three" } })), [{ dir: "Profile 3", name: "Three" }]);
 });
