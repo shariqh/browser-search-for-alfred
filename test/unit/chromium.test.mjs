@@ -264,7 +264,8 @@ test("a fake that refuses any argument still lists tabs, by retrying each read w
   const { app, args } = fakeChrome(twoWindows(), { rejectArgs: true });
   assert.equal(listTabs(app, chrome).length, 3);
   for (const name of readNames) {
-    assert.equal(args[name].length, 2, name);
+    // windows.id is read twice (the second read re-checks the window list), each time with the retry.
+    assert.equal(args[name].length, name === "windows.id" ? 4 : 2, name);
     assert.equal(modifierOf(args[name][0]) >= 1, true);
     assert.deepEqual(args[name][1], []);
   }
@@ -387,4 +388,66 @@ test("a non-timeout error is not retried once the budget is spent", () => {
   // The clock jumps past the deadline while the first read runs.
   assert.deepEqual(listTabs(app, chrome, { budgetSeconds: 1, now: steppingClock(600) }), []);
   assert.equal(args["windows.id"].length, 1);
+});
+
+// The reads are separate Apple Events, so a window can open or close between them. The window list is read
+// a second time after the tab reads and must match the first, or nothing is listed.
+const frontToBack = () => [
+  { id: "1", mode: "normal", tabs: [{ id: "10", title: "Popup", url: "https://login.example/" }] },
+  { id: "2", mode: "incognito", tabs: [{ id: "20", title: "SECRET", url: "https://secret.example/" }] },
+  { id: "3", mode: "normal", tabs: [{ id: "30", title: "Work", url: "https://work.example/" }] },
+];
+
+test("a window that closes between the mode read and the tab reads lists nothing, never an incognito tab", () => {
+  const data = frontToBack();
+  // The popup in front closes just before the tab IDs are read, so every later array shifts by one window.
+  const { app } = fakeChrome(data, { onCall: (name) => name === "tabs.id" && data.shift() });
+  const result = listTabsRaw(app, chrome, { budgetSeconds: 5 });
+  assert.deepEqual(result, { tabs: [], denied: false });
+  assert.ok(!JSON.stringify(result).includes("secret"));
+});
+
+test("a window that opens or closes during the last read lists nothing", () => {
+  for (const change of [(d) => d.shift(), (d) => d.unshift({ id: "9", tabs: [{ id: "90", title: "New", url: "https://new.example/" }] })]) {
+    const data = frontToBack();
+    const { app } = fakeChrome(data, { onCall: (name) => name === "tabs.url" && change(data) });
+    assert.deepEqual(listTabsRaw(app, chrome), { tabs: [], denied: false });
+  }
+});
+
+test("the same windows in a different order lists nothing", () => {
+  const data = frontToBack();
+  const { app } = fakeChrome(data, { onCall: (name) => name === "tabs.title" && data.reverse() });
+  assert.deepEqual(listTabsRaw(app, chrome), { tabs: [], denied: false });
+});
+
+test("any per-window array that does not match the window list lists nothing", () => {
+  for (const read of ["tabs.id", "tabs.title", "tabs.url"]) {
+    const { app } = fakeChrome(twoWindows());
+    const original = app.windows.tabs[read.slice(5)];
+    app.windows.tabs[read.slice(5)] = (...a) => original(...a).slice(1);
+    assert.deepEqual(listTabsRaw(app, chrome), { tabs: [], denied: false }, read);
+  }
+});
+
+test("when no window changes, tabs are listed and the window list is read a second time", () => {
+  const { app, args } = fakeChrome(frontToBack());
+  const result = listTabsRaw(app, chrome, { budgetSeconds: 5 });
+  assert.deepEqual(result.tabs.map((t) => t.tabId), ["10", "30"]);
+  assert.equal(args["windows.id"].length, 2);
+  for (const received of args["windows.id"]) assert.ok(modifierOf(received) >= 1);
+});
+
+test("a timeout or denial on the second window-list read behaves like any other read", () => {
+  for (const [errorNumber, denied] of [[-1712, false], [-1743, true]]) {
+    const data = twoWindows();
+    let ids = 0;
+    const { app } = fakeChrome(data);
+    const original = app.windows.id;
+    app.windows.id = (...a) => {
+      if (++ids === 2) throw Object.assign(new Error("Apple event failed."), { errorNumber });
+      return original(...a);
+    };
+    assert.deepEqual(listTabsRaw(app, chrome), { tabs: [], denied }, String(errorNumber));
+  }
 });

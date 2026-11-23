@@ -66,7 +66,8 @@
     try {
       const { call } = budget(options);
       const win = windowSpecifier(app, windowId);
-      const urls = call((...m) => win.tabs.url(...m)).map(String);
+      // Same normalisation as listTabs, so a tab listed with an empty URL matches its live (missing) one.
+      const urls = call((...m) => win.tabs.url(...m)).map((u) => String(u || ""));
       const position = Number(tabPosition);
       let index = urls[position - 1] === url ? position - 1 : urls.indexOf(url);
       if (index < 0) return false;

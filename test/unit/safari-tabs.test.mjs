@@ -229,3 +229,14 @@ test("activateTab reads with a timeout modifier and returns false for a spent bu
   assert.equal(activateTab(spent.app, "11", "1", "https://a.example/", { deadlineMs: 1, now: () => 2 }), false);
   assert.deepEqual(spent.calls, []);
 });
+
+test("activateTab activates a tab that has no URL, as listTabs lists it with an empty one", () => {
+  for (const missing of [null, undefined]) {
+    const data = [{ id: 11, tabs: [{ name: "Start Page", url: missing }, { name: "Docs", url: "https://d.example/" }] }];
+    const { app, calls } = fakeSafari(data);
+    const blank = listTabs(app).tabs[0];
+    assert.equal(blank.url, "");
+    assert.equal(activateTab(app, blank.windowId, blank.tabId, blank.url), true, String(missing));
+    assert.deepEqual(calls, ["currentTab=1", "index=1", "activate"]);
+  }
+});

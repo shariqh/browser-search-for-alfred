@@ -5,11 +5,18 @@
   //
   // Tab lists are read with one Apple Event per property, each returning every window's values at once
   // (the approach of epilande/alfred-browser-tabs): windows.id(), then windows.tabs.id() / title() / url(),
-  // which are arrays of arrays, one inner array per window. IDs are text in Chrome's dictionary.
+  // which are arrays of arrays, one inner array per window, and finally windows.id() again to prove no
+  // window came or went in between. IDs are text in Chrome's dictionary.
 
   // Every real call carries a per-call timeout counted down from one shared deadline (lib/ae-budget.js).
   const aeBudget = typeof loadLib === "function" ? loadLib("ae-budget") : require("./ae-budget.js");
   const { budget, isDenied } = aeBudget;
+
+  function sameList(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (String(a[i]) !== String(b[i])) return false;
+    return true;
+  }
 
   // `browser` is a registry entry from lib/browsers.js (any family "chromium" browser).
   // tab = {browser: browser.key, browserName: browser.name, windowId, tabId, title, url}; every ID is a string.
@@ -27,9 +34,15 @@
       const tabIds = call((...m) => windows.tabs.id(...m));
       const titles = call((...m) => windows.tabs.title(...m));
       const urls = call((...m) => windows.tabs.url(...m));
-      // One mode per window, in the same order as the IDs. If they do not line up, nothing can be told
-      // apart from a private window, so nothing is listed.
-      if (modes.length !== windowIds.length) return { tabs: [], denied: false };
+      // The reads above are separate Apple Events, so a window can open or close between them, which shifts
+      // every later array against the modes and would pair a private window's tabs with "normal". Read the
+      // window list once more: unless it is the same list in the same order, and every per-window array has
+      // one entry per window, nothing is listed.
+      const windowIdsAfter = call((...m) => windows.id(...m));
+      if (!sameList(windowIds, windowIdsAfter)) return { tabs: [], denied: false };
+      for (const list of [modes, tabIds, titles, urls]) {
+        if (!Array.isArray(list) || list.length !== windowIds.length) return { tabs: [], denied: false };
+      }
       const tabs = [];
       for (let w = 0; w < windowIds.length; w++) {
         // Only a window that says "normal" is listed; incognito and anything unexpected are skipped.
