@@ -31,9 +31,9 @@
     }
   }
 
-  // 1 s, 2 s, 4 s, ... capped at 60 s.
+  // 1 s, 2 s, 4 s, 8 s, then 10 s for every later attempt.
   function reconnectDelayMs(attempt) {
-    return Math.min(1000 * Math.pow(2, attempt), 60000);
+    return Math.min(1000 * Math.pow(2, attempt), 10000);
   }
 
   const api = { handleRequest, reconnectDelayMs };

@@ -72,9 +72,9 @@ test("an unknown command returns {id, error: \"unknown command: x\"}", async () 
   assert.deepEqual(r, { id: "r4", error: "unknown command: x" });
 });
 
-test("reconnectDelayMs doubles from 1000 and caps at 60000", () => {
-  const got = Array.from({ length: 11 }, (_, i) => reconnectDelayMs(i));
-  assert.deepEqual(got, [1000, 2000, 4000, 8000, 16000, 32000, 60000, 60000, 60000, 60000, 60000]);
+test("reconnectDelayMs doubles from 1000 and caps at 10000", () => {
+  const got = Array.from({ length: 8 }, (_, i) => reconnectDelayMs(i));
+  assert.deepEqual(got, [1000, 2000, 4000, 8000, 10000, 10000, 10000, 10000]);
 });
 
 test("manifest.json", () => {
