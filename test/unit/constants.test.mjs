@@ -32,3 +32,10 @@ test("notificationName adds the test channel only when given", () => {
   assert.ok(c.notificationName("reply", "").endsWith(".reply"));
   assert.ok(c.notificationName("reply", "x1").endsWith(".reply.test.x1"));
 });
+
+test("Chrome's data folder, the history limits and Safari's bundle ID", () => {
+  assert.equal(c.chromeDataDir("/h"), "/h/Library/Application Support/Google/Chrome");
+  assert.equal(c.HISTORY_LIMIT, 50);
+  assert.equal(c.SQLITE_TIMEOUT_MS, 400);
+  assert.equal(c.SAFARI_BUNDLE_ID, "com.apple.Safari");
+});

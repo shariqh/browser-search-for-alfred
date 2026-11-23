@@ -25,6 +25,22 @@
     return text.isNil() ? null : String(ObjC.unwrap(text));
   }
 
+  // {ok: true, text} or {ok: false, reason}. The reason tells a file macOS will not let us read ("denied":
+  // NSCocoaErrorDomain 257, from privacy protection or the file's mode) from one that is not there ("missing":
+  // 260, or NSFileNoSuchFileError 4). Anything else, including text that is not UTF-8, is "error".
+  function readFileResult(path) {
+    const err = $();
+    const data = $.NSData.dataWithContentsOfFileOptionsError(path, 0, err);
+    if (data.isNil()) {
+      const code = err.isNil() ? null : Number(err.code);
+      if (code === 257) return { ok: false, reason: "denied" };
+      if (code === 4 || code === 260) return { ok: false, reason: "missing" };
+      return { ok: false, reason: "error" };
+    }
+    const text = $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding);
+    return text.isNil() ? { ok: false, reason: "error" } : { ok: true, text: String(ObjC.unwrap(text)) };
+  }
+
   function setMode(path, mode) {
     const attrs = $.NSDictionary.dictionaryWithObjectForKey($(mode), $.NSFilePosixPermissions);
     fm().setAttributesOfItemAtPathError(attrs, path, $());
@@ -100,6 +116,60 @@
     }
   }
 
+  // Starts `executable` with `args` through NSTask, never a shell, and returns at once with a handle for
+  // finishProcess. stdout goes to `stdoutPath`, created (or emptied) with mode 600, or to /dev/null when it is
+  // null; stderr always goes to /dev/null. A process that cannot start gives a handle finishProcess reports
+  // as {exited: true, status: null}.
+  function startProcess(executable, args, stdoutPath) {
+    const handle = { task: null, stdout: null, pid: null };
+    try {
+      let stdout = $.NSFileHandle.fileHandleWithNullDevice;
+      if (stdoutPath !== null) {
+        const attrs = $.NSDictionary.dictionaryWithObjectForKey($(0o600), $.NSFilePosixPermissions);
+        if (!fm().createFileAtPathContentsAttributes(stdoutPath, $.NSData.data, attrs)) return handle;
+        setMode(stdoutPath, 0o600);
+        stdout = $.NSFileHandle.fileHandleForWritingAtPath(stdoutPath);
+        if (stdout.isNil()) return handle;
+        handle.stdout = stdout;
+      }
+      const task = $.NSTask.alloc.init;
+      task.executableURL = $.NSURL.fileURLWithPath(executable);
+      task.arguments = $(args.map(String));
+      task.standardOutput = stdout;
+      task.standardError = $.NSFileHandle.fileHandleWithNullDevice;
+      if (task.launchAndReturnError($())) {
+        handle.task = task;
+        handle.pid = Number(task.processIdentifier);
+      }
+    } catch (e) {
+      // handle.task stays null: the process did not start.
+    }
+    return handle;
+  }
+
+  // Waits (running the run loop, see waitFor) until the process ends or the clock reaches deadlineMs.
+  // Returns {exited, status}: exited is false only when the deadline passed, and then the process has been
+  // sent SIGTERM (and SIGKILL if it is still there 100 ms later). status is the exit status, or null when
+  // the process did not exit by itself or never started. The stdout file is closed either way.
+  function finishProcess(handle, deadlineMs) {
+    const task = handle.task;
+    try {
+      if (task === null) return { exited: true, status: null };
+      if (waitFor(() => !task.isRunning, deadlineMs)) {
+        return { exited: true, status: task.terminationReason === $.NSTaskTerminationReasonExit ? Number(task.terminationStatus) : null };
+      }
+      task.terminate;
+      if (!waitFor(() => !task.isRunning, Date.now() + 100)) {
+        ObjC.import("signal");
+        $.kill(handle.pid, $.SIGKILL);
+        waitFor(() => !task.isRunning, Date.now() + 100);
+      }
+      return { exited: false, status: null };
+    } finally {
+      if (handle.stdout !== null) handle.stdout.closeFile;
+    }
+  }
+
   function isRunning(bundleId) {
     ObjC.import("AppKit");
     return Number($.NSRunningApplication.runningApplicationsWithBundleIdentifier(bundleId).count) > 0;
@@ -157,6 +227,7 @@
     home,
     channel,
     readText,
+    readFileResult,
     writeTextAtomic,
     ensureDir,
     remove,
@@ -165,6 +236,8 @@
     copyFileAtomic,
     postNotification,
     waitFor,
+    startProcess,
+    finishProcess,
     isRunning,
     logActivation,
     activateApp,

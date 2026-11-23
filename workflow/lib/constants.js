@@ -15,6 +15,10 @@
     return `${home}/Library/Application Support/Mozilla/NativeMessagingHosts/${HOST_NAME}.json`;
   }
 
+  function chromeDataDir(home) {
+    return `${home}/Library/Application Support/Google/Chrome`;
+  }
+
   // kind is "request" or "reply"; channel is only set by tests.
   function notificationName(kind, channel) {
     const base = `${BUNDLE_ID}.${kind}`;
@@ -28,10 +32,15 @@
     KEYWORD: "tab",
     FIREFOX_BUNDLE_ID: "org.mozilla.firefox",
     CHROME_BUNDLE_ID: "com.google.Chrome",
+    SAFARI_BUNDLE_ID: "com.apple.Safari",
     FIREFOX_TIMEOUT_MS: 400,
+    // History: each browser returns at most this many rows, and sqlite3 gets this long to answer.
+    HISTORY_LIMIT: 50,
+    SQLITE_TIMEOUT_MS: 400,
     privateDir,
     helperInstallPath,
     registrationPath,
+    chromeDataDir,
     notificationName,
   };
   if (typeof module === "object" && module && module.exports) module.exports = api;
