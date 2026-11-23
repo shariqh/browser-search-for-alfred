@@ -52,6 +52,23 @@
     return Boolean(fm().fileExistsAtPath(path));
   }
 
+  // True when both files exist and hold exactly the same bytes.
+  function filesEqual(pathA, pathB) {
+    const a = $.NSData.dataWithContentsOfFile(pathA);
+    const b = $.NSData.dataWithContentsOfFile(pathB);
+    if (a.isNil() || b.isNil()) return false;
+    return Boolean(a.isEqualToData(b));
+  }
+
+  // Copies the bytes of src over dest atomically (a reader sees the old file or the whole new one),
+  // then sets the mode of dest.
+  function copyFileAtomic(src, dest, mode) {
+    const data = $.NSData.dataWithContentsOfFile(src);
+    if (data.isNil()) throw new Error(`cannot read ${src}`);
+    if (!data.writeToFileAtomically(dest, true)) throw new Error(`cannot write ${dest}`);
+    setMode(dest, mode);
+  }
+
   // Distributed notifications carry only a name and one string.
   function postNotification(name, object) {
     $.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately(
@@ -110,6 +127,8 @@
     ensureDir,
     remove,
     fileExists,
+    filesEqual,
+    copyFileAtomic,
     postNotification,
     waitFor,
     isRunning,
