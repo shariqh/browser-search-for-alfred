@@ -36,7 +36,7 @@ Search open tabs, bookmarks and history in Firefox, Safari, Chrome, Brave and Ed
 
 Work in progress. The text above this line is the workflow's README in Alfred; keep it identical to the `readme` in `workflow/info.plist` (the build test checks). The design is in [docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md](docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md), and the build log is in [docs/build-log.md](docs/build-log.md).
 
-Other facts: only `http`, `https` and `file` links are listed or opened. For Chrome, Brave, Edge and Safari history, matching ignores upper and lower case only for plain English letters. Bookmarks are cached for 5 minutes and refreshed in the background. Notices such as "Allow Alfred to read ..." or "Set up Firefox" are never cached.
+Other facts: bookmarks and history list and open only `http`, `https` and `file` links; tabs are not filtered by link type. For Chrome, Brave, Edge and Safari history, matching ignores upper and lower case only for plain English letters. Bookmarks are cached for 5 minutes and refreshed in the background. Notices such as "Allow Alfred to read ..." or "Set up Firefox" are never cached.
 
 ## Development
 

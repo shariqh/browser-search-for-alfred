@@ -40,3 +40,11 @@ One snag on the way: the two files were first sent as chat attachments, which he
 ## 2026-11-23: milestone 2 try-out on the MacBook Air
 
 Shariq updated the workflow on the Air, swapped in the 0.2.0 add-on, ran "Set up Firefox" again, and went through `bmk`, `hist`, Return, ⌘Return and the browser checkboxes with his own Firefox, Chrome and Safari. His report: "all worked as expected." That covers the parts the tests can't reach: real-Firefox bookmarks and history, how macOS treats Alfred reading Chrome's and Safari's data, the Full Disk Access link, and a just-visited Safari page showing up in `hist`. He didn't say which permission path Chrome took (a macOS question, Full Disk Access, or nothing), so that stays unrecorded.
+
+## 2026-11-23: milestone 3, more browsers
+
+- Added Safari tabs, Brave and Edge (tabs, bookmarks and history), a checkbox for each of the five browsers, Allow items that explain a missing macOS permission, the Gallery-style README and the icon. Version 0.3.0 for the workflow; the add-on is unchanged at 0.2.0.
+- Fixed on the way: incognito and private windows are now left out of Firefox, Chrome, Brave and Edge tabs.
+- Safari doesn't tell Alfred which windows are private, so whether its private windows are listed stays unknown until the try-out.
+- Brave and Edge are tested only against fixtures, not real browsers, until the try-out.
+- The real-Firefox gate (`npm run check:firefox`) result is recorded by the controller.

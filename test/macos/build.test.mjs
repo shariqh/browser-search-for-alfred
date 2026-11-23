@@ -35,7 +35,7 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.2.0");
+  assert.equal(p.version, "0.3.0");
 });
 
 const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
@@ -129,6 +129,7 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
   const lines = zipList(workflowZip);
   const names = lines.map((l) => l.trim().split(/\s+/).pop());
   const libs = [
+    "ae-budget",
     "browsers",
     "chromium-files",
     "chromium",
@@ -140,6 +141,7 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
     "jxa",
     "registration",
     "safari-files",
+    "safari-tabs",
     "sql",
     "sqlite",
   ];

@@ -69,7 +69,7 @@
 	<key>createdby</key>
 	<string>Shariq Hirani</string>
 	<key>description</key>
-	<string>Search open tabs, bookmarks and history in Firefox, Chrome and Safari.</string>
+	<string>Search open tabs, bookmarks and history in Firefox, Chrome, Safari, Brave and Edge.</string>
 	<key>disabled</key>
 	<false/>
 	<key>name</key>
@@ -472,7 +472,7 @@ Change the keywords, and tick or untick Firefox, Google Chrome, Safari, Brave Br
 	<key>variablesdontexport</key>
 	<array/>
 	<key>version</key>
-	<string>0.2.0</string>
+	<string>0.3.0</string>
 	<key>webaddress</key>
 	<string>https://github.com/shariqh/browser-search-for-alfred</string>
 </dict>
