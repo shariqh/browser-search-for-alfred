@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, statSync, lutimesSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -160,6 +160,31 @@ test("a missing History or bad SQL is an error, and the output file is still rem
   const bad = await drive(fx, ["sql", db, "SELECT nope FROM nowhere", "2000"]);
   assert.deepEqual(bad.result, { ok: false, reason: "error" });
   assert.deepEqual(bad.after, []);
+});
+
+test("start removes output files older than 60 seconds left by a killed run, and leaves younger ones", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const db = await makeHistory(fx);
+  mkdirSync(fx.sqliteDir, { recursive: true, mode: 0o700 });
+  const old = path.join(fx.sqliteDir, "1-1-0-old.json");
+  const fresh = path.join(fx.sqliteDir, "2-2-0-fresh.json");
+  writeFileSync(old, '[{"url":"https://left.example/"}]', { mode: 0o600 });
+  writeFileSync(fresh, "", { mode: 0o600 });
+  // An old file outside the folder, and an old link to it inside: only regular files are swept, never followed.
+  const outside = path.join(fx.root, "outside.json");
+  const link = path.join(fx.sqliteDir, "3-3-0-link.json");
+  writeFileSync(outside, "keep");
+  symlinkSync(outside, link);
+  const past = new Date(Date.now() - 120_000);
+  for (const file of [old, outside]) utimesSync(file, past, past);
+  lutimesSync(link, past, past);
+  const out = await drive(fx, ["history", db, "", "2000"]);
+  assert.deepEqual(out.result, { ok: true, rows: visible });
+  assert.equal(existsSync(old), false);
+  assert.equal(existsSync(fresh), true);
+  assert.equal(readFileSync(outside, "utf8"), "keep");
+  assert.equal(lstatSync(link).isSymbolicLink(), true);
+  assert.deepEqual(out.after.map((f) => f.name).sort(), ["2-2-0-fresh.json", "3-3-0-link.json"]);
 });
 
 // Review Focus 2: Chrome holds an exclusive lock on History while it runs.
