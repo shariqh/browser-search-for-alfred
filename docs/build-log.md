@@ -12,3 +12,7 @@ Notes for the blog post and video. Newest entries at the bottom.
 ## 2026-11-22: name
 
 - Named "Browser Search for Alfred".
+
+## 2026-11-22: real Firefox starts the helper on the MacBook Pro
+
+`npm run check:firefox` printed `REAL FIREFOX: PASS` (macOS 27.3, Firefox 160.0.1, web-ext 10.8.0). The script ran "Set up Firefox" against the real home folder, then used web-ext to start a separate Firefox with a fresh temporary profile (web-ext passes `-no-remote`, so Shariq's own Firefox was never touched), with our add-on loaded as a temporary add-on and `https://example.com/` as the start page. On the first poll that succeeded, `tab.js` returned an item whose subtitle contained `example.com`, and `pgrep` showed Firefox had started `firefox-helper.js` from the installed copy. After the run, web-ext's Firefox and the helper were both gone, and only our own registration file had been added to the NativeMessagingHosts folder. This is the first time a real Firefox, not a stand-in, ran the JXA helper in this project, so the gate is open for the Chrome work.
