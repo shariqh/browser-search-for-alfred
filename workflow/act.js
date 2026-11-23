@@ -1,7 +1,8 @@
 #!/usr/bin/osascript -l JavaScript
 // Entry for actions: osascript -l JavaScript act.js '<json>'
 // The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox;
-// "activate" brings one browser tab (Firefox or Chrome) to the front.
+// "activate" brings one browser tab (Firefox or Chrome) to the front; "open" opens a bookmark or history URL in
+// its own browser, "open-default" in the default browser, and "open-privacy" opens Full Disk Access in System Settings.
 ObjC.import("Foundation");
 
 // The folder of this script. Alfred runs entries with the workflow folder as the current directory,
@@ -76,6 +77,37 @@ function activate(request) {
   throw new Error(`unknown browser: ${request.browser}`);
 }
 
+const OPEN = "/usr/bin/open";
+const PRIVACY_PANE = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+
+// Runs /usr/bin/open with `args` (an argv array, no shell). Under BSA_TEST_CHANNEL nothing is opened: logLine is
+// logged instead (see jxa.logActivation).
+function runOpen(args, logLine) {
+  const jxa = loadLib("jxa");
+  if (jxa.channel() !== "") {
+    jxa.logActivation(logLine);
+    return;
+  }
+  const result = jxa.finishProcess(jxa.startProcess(OPEN, args, null), Date.now() + 5000);
+  if (result.status !== 0) throw new Error("open failed");
+}
+
+// Only http:, https: and file: URLs are opened. isOpenableUrl also rules out a URL that open could read as an option.
+function openableUrl(url) {
+  if (!loadLib("items").isOpenableUrl(url)) throw new Error("refused to open that URL");
+  return url;
+}
+
+// Opens a bookmark or history URL in the browser it came from. This may start that browser: Return is an explicit ask.
+function openInBrowser(request) {
+  const constants = loadLib("constants");
+  const bundleIds = { firefox: constants.FIREFOX_BUNDLE_ID, chrome: constants.CHROME_BUNDLE_ID, safari: constants.SAFARI_BUNDLE_ID };
+  if (!Object.prototype.hasOwnProperty.call(bundleIds, request.browser)) throw new Error(`unknown browser: ${request.browser}`);
+  const bundleId = bundleIds[request.browser];
+  const url = openableUrl(request.url);
+  runOpen(["-b", bundleId, url], `open ${bundleId} ${url}`);
+}
+
 function run(argv) {
   const request = JSON.parse(argv[0] || "{}");
   switch (request.action) {
@@ -84,6 +116,17 @@ function run(argv) {
       return;
     case "activate":
       activate(request);
+      return;
+    case "open":
+      openInBrowser(request);
+      return;
+    case "open-default": {
+      const url = openableUrl(request.url);
+      runOpen([url], `open-default ${url}`);
+      return;
+    }
+    case "open-privacy":
+      runOpen([PRIVACY_PANE], "open-privacy");
       return;
     default:
       throw new Error(`unknown action: ${request.action}`);
