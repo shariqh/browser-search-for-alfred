@@ -120,6 +120,7 @@
   }
 
   const api = {
+    envVar,
     home,
     channel,
     readText,

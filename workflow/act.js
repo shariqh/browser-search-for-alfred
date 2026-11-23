@@ -1,6 +1,7 @@
 #!/usr/bin/osascript -l JavaScript
 // Entry for actions: osascript -l JavaScript act.js '<json>'
-// The JSON has an "action". "setup-firefox" installs the helper copy and registers it with Firefox.
+// The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox;
+// "activate" brings one browser tab to the front.
 ObjC.import("Foundation");
 
 // The folder of this script. Alfred runs entries with the workflow folder as the current directory,
@@ -46,11 +47,29 @@ function setupFirefox() {
   jxa.writeTextAtomic(registrationFile, text, 0o644);
 }
 
+// Brings a Firefox tab to the front: the add-on selects the tab and its window, then macOS raises Firefox.
+// If the tab closed meanwhile the add-on's answer is an error, which is ignored; Firefox still comes forward
+// if it is running and is never launched.
+function activate(request) {
+  const constants = loadLib("constants");
+  const jxa = loadLib("jxa");
+  if (request.browser === "firefox") {
+    const client = loadLib("firefox-client");
+    client.request("activate-tab", { tabId: request.tabId, windowId: request.windowId }, constants.FIREFOX_TIMEOUT_MS);
+    jxa.activateApp(constants.FIREFOX_BUNDLE_ID);
+    return;
+  }
+  throw new Error(`unknown browser: ${request.browser}`);
+}
+
 function run(argv) {
   const request = JSON.parse(argv[0] || "{}");
   switch (request.action) {
     case "setup-firefox":
       setupFirefox();
+      return;
+    case "activate":
+      activate(request);
       return;
     default:
       throw new Error(`unknown action: ${request.action}`);
