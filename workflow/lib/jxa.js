@@ -25,20 +25,42 @@
     return text.isNil() ? null : String(ObjC.unwrap(text));
   }
 
-  // {ok: true, text} or {ok: false, reason}. The reason tells a file macOS will not let us read ("denied":
-  // NSCocoaErrorDomain 257, from privacy protection or the file's mode) from one that is not there ("missing":
-  // 260, or NSFileNoSuchFileError 4). Anything else, including text that is not UTF-8, is "error".
+  // Why a read failed, from the NSError its call filled in (nil when the call gave none): "denied" is
+  // NSCocoaErrorDomain 257, from privacy protection or the file's mode (NSFileHandle reports a file's mode as 513,
+  // NSFileWriteNoPermissionError, verified on macOS 27.3); "missing" is 260, or NSFileNoSuchFileError 4; anything else
+  // is "error".
+  function failureReason(err) {
+    const code = err.isNil() ? null : Number(err.code);
+    if (code === 257 || code === 513) return "denied";
+    if (code === 4 || code === 260) return "missing";
+    return "error";
+  }
+
+  // {ok: true, text} or {ok: false, reason}, the reason as failureReason gives it. Text that is not UTF-8 is "error".
   function readFileResult(path) {
     const err = $();
     const data = $.NSData.dataWithContentsOfFileOptionsError(path, 0, err);
-    if (data.isNil()) {
-      const code = err.isNil() ? null : Number(err.code);
-      if (code === 257) return { ok: false, reason: "denied" };
-      if (code === 4 || code === 260) return { ok: false, reason: "missing" };
-      return { ok: false, reason: "error" };
-    }
+    if (data.isNil()) return { ok: false, reason: failureReason(err) };
     const text = $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding);
     return text.isNil() ? { ok: false, reason: "error" } : { ok: true, text: String(ObjC.unwrap(text)) };
+  }
+
+  // {ok: true, value} or {ok: false, reason}, like readFileResult, for a property list (XML or binary) whose
+  // top level is a dictionary. value is plain JS (ObjC.deepUnwrap); data and date values come out as opaque objects.
+  function readPlistResult(path) {
+    const err = $();
+    const dict = $.NSDictionary.dictionaryWithContentsOfURLError($.NSURL.fileURLWithPath(path), err);
+    return dict.isNil() ? { ok: false, reason: failureReason(err) } : { ok: true, value: ObjC.deepUnwrap(dict) };
+  }
+
+  // "ok" when the file can be opened for reading, else "missing", "denied" or "error", without reading it. This is
+  // how macOS privacy protection answers for a file we have no right to, such as Safari's without Full Disk Access.
+  function accessResult(path) {
+    const err = $();
+    const handle = $.NSFileHandle.fileHandleForReadingFromURLError($.NSURL.fileURLWithPath(path), err);
+    if (handle.isNil()) return failureReason(err);
+    handle.closeAndReturnError($());
+    return "ok";
   }
 
   function setMode(path, mode) {
@@ -228,6 +250,8 @@
     channel,
     readText,
     readFileResult,
+    readPlistResult,
+    accessResult,
     writeTextAtomic,
     ensureDir,
     remove,

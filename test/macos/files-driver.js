@@ -1,11 +1,15 @@
-// A tiny JXA driver for the tests: calls chromium-files.js, sqlite.js and jxa.js and prints one JSON result.
-// Usage: osascript -l JavaScript chrome-files-driver.js <workflow dir> read <path>
-//        osascript -l JavaScript chrome-files-driver.js <workflow dir> bookmarks
+// A tiny JXA driver for the tests: calls chromium-files.js, safari-files.js, sqlite.js and jxa.js and prints one JSON result.
+// Usage: osascript -l JavaScript files-driver.js <workflow dir> read <path>
+//        osascript -l JavaScript files-driver.js <workflow dir> bookmarks
 //          (every profile in $HOME's Chrome folder: {profiles, bookmarks: {<dir>: [...]}, reads: {<dir>: reason}})
-//        osascript -l JavaScript chrome-files-driver.js <workflow dir> history <History path> <query> <timeout ms>
-//        osascript -l JavaScript chrome-files-driver.js <workflow dir> sql <db path> <sql> <timeout ms>
+//        osascript -l JavaScript files-driver.js <workflow dir> history <History path> <query> <timeout ms>
+//        osascript -l JavaScript files-driver.js <workflow dir> sql <db path> <sql> <timeout ms>
 //          (history and sql also print the sqlite folder's files, with their modes, while sqlite3 runs)
-//        osascript -l JavaScript chrome-files-driver.js <workflow dir> process <timeout ms> <stdout path or ""> <executable> <args...>
+//        osascript -l JavaScript files-driver.js <workflow dir> plist <path>
+//          ({result: readPlistResult, bookmarks: bookmarksFromPlist of its value, or null})
+//        osascript -l JavaScript files-driver.js <workflow dir> access <path>
+//        osascript -l JavaScript files-driver.js <workflow dir> safari-history <History.db path> <query> <timeout ms>
+//        osascript -l JavaScript files-driver.js <workflow dir> process <timeout ms> <stdout path or ""> <executable> <args...>
 ObjC.import("Foundation");
 
 let workflowDir = "";
@@ -67,6 +71,13 @@ function run(argv) {
     print(JSON.stringify({ profiles, bookmarks, reads }));
   } else if (command === "history") {
     print(JSON.stringify(runSql(argv[2], files.historySql(argv[3], constants.HISTORY_LIMIT), Number(argv[4]))));
+  } else if (command === "plist") {
+    const result = jxa.readPlistResult(argv[2]);
+    print(JSON.stringify({ result, bookmarks: result.ok ? loadLib("safari-files").bookmarksFromPlist(result.value) : null }));
+  } else if (command === "access") {
+    print(JSON.stringify(jxa.accessResult(argv[2])));
+  } else if (command === "safari-history") {
+    print(JSON.stringify(runSql(argv[2], loadLib("safari-files").historySql(argv[3], constants.HISTORY_LIMIT), Number(argv[4]))));
   } else if (command === "sql") {
     print(JSON.stringify(runSql(argv[2], argv[3], Number(argv[4]))));
   } else if (command === "process") {

@@ -15,7 +15,7 @@ const execFileAsync = promisify(execFile);
 const darwin = process.platform === "darwin";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const workflowDir = path.join(here, "..", "..", "workflow");
-const driver = path.join(here, "chrome-files-driver.js");
+const driver = path.join(here, "files-driver.js");
 const chromeFixtures = path.join(here, "..", "fixtures", "chrome");
 const SQLITE = "/usr/bin/sqlite3";
 

@@ -19,6 +19,14 @@
     return `${home}/Library/Application Support/Google/Chrome`;
   }
 
+  function safariBookmarksPath(home) {
+    return `${home}/Library/Safari/Bookmarks.plist`;
+  }
+
+  function safariHistoryPath(home) {
+    return `${home}/Library/Safari/History.db`;
+  }
+
   // kind is "request" or "reply"; channel is only set by tests.
   function notificationName(kind, channel) {
     const base = `${BUNDLE_ID}.${kind}`;
@@ -41,6 +49,8 @@
     helperInstallPath,
     registrationPath,
     chromeDataDir,
+    safariBookmarksPath,
+    safariHistoryPath,
     notificationName,
   };
   if (typeof module === "object" && module && module.exports) module.exports = api;
