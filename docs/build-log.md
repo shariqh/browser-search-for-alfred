@@ -36,3 +36,7 @@ One snag on the way: the two files were first sent as chat attachments, which he
   - A person's `~/.sqliterc` could silently empty history.
   - A slow or failing history read made that browser vanish without a word.
 - Tests: 114 unit and 96 macOS.
+
+## 2026-11-23: milestone 2 try-out on the MacBook Air
+
+Shariq updated the workflow on the Air, swapped in the 0.2.0 add-on, ran "Set up Firefox" again, and went through `bmk`, `hist`, Return, ⌘Return and the browser checkboxes with his own Firefox, Chrome and Safari. His report: "all worked as expected." That covers the parts the tests can't reach: real-Firefox bookmarks and history, how macOS treats Alfred reading Chrome's and Safari's data, the Full Disk Access link, and a just-visited Safari page showing up in `hist`. He didn't say which permission path Chrome took (a macOS question, Full Disk Access, or nothing), so that stays unrecorded.
