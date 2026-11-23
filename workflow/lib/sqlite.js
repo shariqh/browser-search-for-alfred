@@ -49,7 +49,7 @@
     try {
       jxa.ensureDir(outputDir(), 0o700);
       sweep(outputDir());
-      handle.process = jxa.startProcess(SQLITE, ["-readonly", "-json", sql.immutableUri(dbPath), query], handle.outPath);
+      handle.process = jxa.startProcess(SQLITE, sql.sqliteArgs(sql.immutableUri(dbPath), query), handle.outPath);
     } catch (e) {
       // handle.process stays null: finish() reports an error.
     }

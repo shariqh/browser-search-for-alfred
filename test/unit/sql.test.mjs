@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { splitTerms, likeClause, immutableUri } = require("../../workflow/lib/sql.js");
+const { splitTerms, likeClause, immutableUri, sqliteArgs } = require("../../workflow/lib/sql.js");
 
 test("splitTerms splits on any whitespace, drops empty strings and keeps the first 10", () => {
   assert.deepEqual(splitTerms("  a  b\tc\nd "), ["a", "b", "c", "d"]);
@@ -48,4 +48,17 @@ test("likeClause uses at most 10 terms", () => {
 test("immutableUri percent-encodes each path part and keeps the slashes", () => {
   assert.equal(immutableUri("/a b/c#d?.db"), "file:/a%20b/c%23d%3F.db?immutable=1");
   assert.equal(immutableUri("/Users/x/History"), "file:/Users/x/History?immutable=1");
+});
+
+test("sqliteArgs starts sqlite3 with -init /dev/null, so the person's ~/.sqliterc never changes the output", () => {
+  // sqlite3 finds ~/.sqliterc through the user database, not $HOME, so only -init keeps it out; a `.print` or
+  // `.timer on` there would break the JSON.
+  assert.deepEqual(sqliteArgs("file:/a%20b/H?immutable=1", "SELECT 1"), [
+    "-init",
+    "/dev/null",
+    "-readonly",
+    "-json",
+    "file:/a%20b/H?immutable=1",
+    "SELECT 1",
+  ]);
 });

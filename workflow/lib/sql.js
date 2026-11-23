@@ -25,7 +25,14 @@
     return "file:" + path.split("/").map(encodeURIComponent).join("/") + "?immutable=1";
   }
 
-  const api = { splitTerms, likeClause, immutableUri };
+  // The arguments for /usr/bin/sqlite3: one read-only query on the database at `uri`, printed as JSON. sqlite3
+  // otherwise reads ~/.sqliterc (found through the user database, not $HOME), where a `.print`, `.echo on` or
+  // `.timer on` would break the JSON, so -init points it at an empty file instead.
+  function sqliteArgs(uri, query) {
+    return ["-init", "/dev/null", "-readonly", "-json", uri, query];
+  }
+
+  const api = { splitTerms, likeClause, immutableUri, sqliteArgs };
   if (typeof module === "object" && module && module.exports) module.exports = api;
   return api;
 })();
