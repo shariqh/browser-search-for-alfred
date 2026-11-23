@@ -9,13 +9,16 @@ const { tabItem } = require("../../workflow/lib/items.js");
 // A stand-in shaped like JXA's Application("Google Chrome"). `data` is [{id, tabs: [{id, title, url}]}].
 // Every read and command records the arguments it receives in `args`, keyed by name. `failOn` names a call
 // (for example "tabs.title") that throws the way a timed-out Apple Event does.
-function fakeChrome(data, { running = true, failOn = null, onCall = () => {} } = {}) {
+// `rejectArgs` makes every call that is given an argument throw a TypeError, as JXA would if it refused the
+// modifier shape; the same call with no argument works. `errorNumber` is the number `failOn` throws with.
+function fakeChrome(data, { running = true, failOn = null, errorNumber = -1712, rejectArgs = false, onCall = () => {} } = {}) {
   const calls = [];
   const args = {};
   const call = (name, received, value) => {
     (args[name] = args[name] || []).push(received);
     onCall(name);
-    if (failOn === name) throw Object.assign(new Error("Apple event timed out."), { errorNumber: -1712 });
+    if (rejectArgs && received.length > 0) throw new TypeError("Wrong number of arguments");
+    if (failOn === name) throw Object.assign(new Error("Apple event failed."), { errorNumber });
     return value();
   };
   const windowObjects = new Map();
@@ -235,4 +238,52 @@ test("activateTab returns false and changes nothing when reading the window's ta
 test("activateTab returns false when raising Chrome times out", () => {
   const { app } = fakeChrome(twoWindows(), { failOn: "activate" });
   assert.equal(activateTab(app, "100", "2"), false);
+});
+
+const readNames = ["windows.id", "tabs.id", "tabs.title", "tabs.url"];
+
+test("a timeout (-1712) is not retried", () => {
+  const { app, args } = fakeChrome(twoWindows(), { failOn: "windows.id" });
+  assert.deepEqual(listTabs(app, "Google Chrome"), []);
+  assert.equal(args["windows.id"].length, 1);
+});
+
+test("a fake that refuses any argument still lists tabs, by retrying each read without one", () => {
+  const { app, args } = fakeChrome(twoWindows(), { rejectArgs: true });
+  assert.equal(listTabs(app, "Google Chrome").length, 3);
+  for (const name of readNames) {
+    assert.equal(args[name].length, 2, name);
+    assert.equal(modifierOf(args[name][0]) >= 1, true);
+    assert.deepEqual(args[name][1], []);
+  }
+});
+
+test("a fake that refuses any argument still activates", () => {
+  const { app, calls, args } = fakeChrome(twoWindows(), { rejectArgs: true });
+  assert.equal(activateTab(app, "100", "2"), true);
+  assert.deepEqual(calls, ["activeTabIndex=2", "index=1", "activate"]);
+  assert.deepEqual(args["window.tabs.id"][1], []);
+  assert.deepEqual(args["activate"][1], []);
+});
+
+test("Automation denied (-1743) on the modified and the plain call gives [] without throwing", () => {
+  for (const failOn of readNames) {
+    const { app, args } = fakeChrome(twoWindows(), { failOn, errorNumber: -1743 });
+    assert.deepEqual(listTabs(app, "Google Chrome"), [], failOn);
+    assert.equal(args[failOn].length, 2, `${failOn} was retried once`);
+  }
+});
+
+test("Automation denied (-1743) gives false from activateTab without throwing", () => {
+  for (const failOn of ["window.tabs.id", "activate"]) {
+    const { app } = fakeChrome(twoWindows(), { failOn, errorNumber: -1743 });
+    assert.equal(activateTab(app, "100", "2"), false, failOn);
+  }
+});
+
+test("a non-timeout error is not retried once the budget is spent", () => {
+  const { app, args } = fakeChrome(twoWindows(), { failOn: "windows.id", errorNumber: -1743 });
+  // The clock jumps past the deadline while the first read runs.
+  assert.deepEqual(listTabs(app, "Google Chrome", { budgetSeconds: 1, now: steppingClock(600) }), []);
+  assert.equal(args["windows.id"].length, 1);
 });

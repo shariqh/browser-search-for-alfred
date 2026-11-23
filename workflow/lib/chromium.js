@@ -20,16 +20,39 @@
   // Writes (activeTabIndex, index) are plain assignments, which cannot carry modifiers.
   const DEFAULT_BUDGET_SECONDS = 1;
 
-  // Returns timeout() -> whole seconds for the next call, or throws once the budget is spent.
+  // Returns {timeout, spent, call}.
+  //   timeout() -> whole seconds for the next call, or throws once the budget is spent.
+  //   spent()   -> true when nothing is left.
+  //   call(fn)  -> fn({timeout: n}); fn spreads its arguments into the Apple Event call, so the retry
+  //                passes none. The modifier shape is an assumption (above), so if JXA refuses it with
+  //                a quick error that is not a timeout, fn is retried once with no argument, which is the
+  //                unbounded call that worked before. A timeout (-1712) or a spent budget is rethrown, so a
+  //                hung Chrome still costs about the budget. Other errors from the retry (for example
+  //                Automation denied, -1743) propagate to the caller, which treats them as "no Chrome".
   function budget(options) {
     const seconds = options && options.budgetSeconds !== undefined ? options.budgetSeconds : DEFAULT_BUDGET_SECONDS;
     const now = (options && options.now) || Date.now;
     const deadline = now() + seconds * 1000;
-    return function timeout() {
-      const left = (deadline - now()) / 1000;
-      if (left <= 0) throw new Error("Chrome did not answer in time");
-      return Math.max(1, Math.floor(left));
-    };
+    const left = () => (deadline - now()) / 1000;
+    const spent = () => left() <= 0;
+    function timeout() {
+      const remaining = left();
+      if (remaining <= 0) throw new Error("Chrome did not answer in time");
+      return Math.max(1, Math.floor(remaining));
+    }
+    function isTimeout(e) {
+      return Boolean(e) && (e.errorNumber === -1712 || /\(-1712\)/.test(String(e.message)));
+    }
+    function call(fn) {
+      const modifiers = { timeout: timeout() };
+      try {
+        return fn(modifiers);
+      } catch (e) {
+        if (isTimeout(e) || spent()) throw e;
+        return fn();
+      }
+    }
+    return { timeout, spent, call };
   }
 
   // tab = {browser: "chrome", browserName, windowId, tabId, title, url}; every ID is a string.
@@ -38,12 +61,12 @@
   function listTabs(app, browserName, options) {
     if (!app.running()) return [];
     try {
-      const timeout = budget(options);
+      const { call } = budget(options);
       const windows = app.windows;
-      const windowIds = windows.id({ timeout: timeout() });
-      const tabIds = windows.tabs.id({ timeout: timeout() });
-      const titles = windows.tabs.title({ timeout: timeout() });
-      const urls = windows.tabs.url({ timeout: timeout() });
+      const windowIds = call((...m) => windows.id(...m));
+      const tabIds = call((...m) => windows.tabs.id(...m));
+      const titles = call((...m) => windows.tabs.title(...m));
+      const urls = call((...m) => windows.tabs.url(...m));
       const tabs = [];
       for (let w = 0; w < windowIds.length; w++) {
         const ids = tabIds[w] || [];
@@ -68,13 +91,13 @@
   // and never throwing, when the window or the tab has gone or Chrome does not answer in time.
   function activateTab(app, windowId, tabId, options) {
     try {
-      const timeout = budget(options);
+      const { call } = budget(options);
       const win = app.windows.byId(String(windowId));
-      const index = win.tabs.id({ timeout: timeout() }).map(String).indexOf(String(tabId));
+      const index = call((...m) => win.tabs.id(...m)).map(String).indexOf(String(tabId));
       if (index < 0) return false;
       win.activeTabIndex = index + 1;
       win.index = 1;
-      app.activate({ timeout: timeout() });
+      call((...m) => app.activate(...m));
       return true;
     } catch (e) {
       return false;
