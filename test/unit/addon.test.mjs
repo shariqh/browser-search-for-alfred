@@ -91,3 +91,32 @@ test("background.js connects to the native host by its fixed name", () => {
   assert.ok(backgroundSource.includes(`connectNative("${constants.HOST_NAME}")`));
   assert.ok(backgroundSource.includes('connectNative("io.github.shariqh.browser_search_for_alfred")'));
 });
+
+test("activate-tab without integer tabId and windowId returns {id, error: \"invalid params\"} and activates nothing", async () => {
+  const bad = [
+    undefined,
+    {},
+    { tabId: 5 },
+    { windowId: 9 },
+    { tabId: "5", windowId: 9 },
+    { tabId: 5, windowId: "9" },
+    { tabId: 5.5, windowId: 9 },
+    { tabId: null, windowId: 9 },
+    { tabId: 5, windowId: undefined },
+    { tabId: NaN, windowId: 9 },
+    { tabId: true, windowId: 9 },
+  ];
+  for (const params of bad) {
+    const b = fakeBrowser();
+    const r = await handleRequest(b, { id: "p", command: "activate-tab", params });
+    assert.deepEqual(r, { id: "p", error: "invalid params" }, JSON.stringify(params));
+    assert.deepEqual(b.calls, [], "no tab or window was touched");
+  }
+});
+
+test("activate-tab accepts 0 as a tab or window ID", async () => {
+  const b = fakeBrowser();
+  const r = await handleRequest(b, { id: "z", command: "activate-tab", params: { tabId: 0, windowId: 0 } });
+  assert.deepEqual(r, { id: "z", payload: true });
+  assert.equal(b.calls.length, 2);
+});

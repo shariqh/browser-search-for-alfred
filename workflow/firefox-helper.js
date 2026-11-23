@@ -20,6 +20,14 @@ const REPLY_NOTIFICATION = "io.github.shariqh.browser-search-for-alfred.reply";
 
 const ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/;
 
+// Only these commands are ever forwarded to Firefox; anything else gets an error reply.
+const ALLOWED_COMMANDS = ["list-tabs", "activate-tab"];
+// A request is a few hundred bytes; a bigger file is not from our client and is deleted unread.
+const MAX_REQUEST_BYTES = 16 * 1024;
+// Firefox documents 1 MB as the limit for a message to a native host and 4 GB the other way. Tab lists are
+// the largest thing we expect, so a frame over 64 MB means the stream is out of step.
+const MAX_FRAME_BYTES = 64 * 1024 * 1024;
+
 const environment = $.NSProcessInfo.processInfo.environment;
 
 function envVar(name) {
@@ -75,6 +83,23 @@ function removeFile(path) {
   fileManager.removeItemAtPathError(path, $());
 }
 
+// One fixed line on stderr, never any data: Firefox shows a native host's stderr in its browser console.
+function logProblem(line) {
+  try {
+    $.NSFileHandle.fileHandleWithStandardError.writeData($(line + "\n").dataUsingEncoding($.NSUTF8StringEncoding));
+  } catch (e) {
+    // Nothing more can be done.
+  }
+}
+
+// The size in bytes of a file, from its attributes (the file is not read), or null when it cannot be seen.
+function fileSize(path) {
+  const attrs = fileManager.attributesOfItemAtPathError(path, $());
+  if (attrs.isNil()) return null;
+  const size = attrs.objectForKey($.NSFileSize);
+  return size.isNil() ? null : Number(size.unsignedLongLongValue);
+}
+
 // Deletes leftover request and reply files older than STALE_MS, and forgets requests that old.
 // Called at start and on every request, so a late reply never stays for long.
 function sweep() {
@@ -104,7 +129,8 @@ const stdout = $.NSFileHandle.fileHandleWithStandardOutput;
 let inbox = $.NSMutableData.data;
 
 // Ids of requests forwarded to Firefox that have not been answered yet, with the time each was forwarded.
-const pending = {};
+// No prototype, so an id such as "constructor" is not found by accident.
+const pending = Object.create(null);
 
 function latin1(str) {
   return $.NSString.alloc.initWithString(str).dataUsingEncoding($.NSISOLatin1StringEncoding);
@@ -119,12 +145,8 @@ function sendToFirefox(message) {
   stdout.writeData(out);
 }
 
-function handleFirefoxMessage(message) {
-  if (message === null || typeof message !== "object") return;
-  const id = message.id;
-  if (typeof id !== "string" || !ID_PATTERN.test(id) || !pending[id]) return;
-  delete pending[id];
-  const reply = "error" in message ? { id, error: message.error } : { id, payload: message.payload };
+// Writes <id>.reply.json and tells the client. The id has already matched ID_PATTERN.
+function writeReply(id, reply) {
   if (writeTextAtomic(`${PRIVATE_DIR}/${id}.reply.json`, JSON.stringify(reply))) {
     $.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately(
       notificationName(REPLY_NOTIFICATION),
@@ -135,12 +157,25 @@ function handleFirefoxMessage(message) {
   }
 }
 
+function handleFirefoxMessage(message) {
+  if (message === null || typeof message !== "object") return;
+  const id = message.id;
+  if (typeof id !== "string" || !ID_PATTERN.test(id) || pending[id] === undefined) return;
+  delete pending[id];
+  writeReply(id, "error" in message ? { id, error: message.error } : { id, payload: message.payload });
+}
+
 function drainInbox() {
   while (Number(inbox.length) >= 4) {
     const header = ObjC.unwrap(
       $.NSString.alloc.initWithDataEncoding(inbox.subdataWithRange($.NSMakeRange(0, 4)), $.NSISOLatin1StringEncoding),
     );
-    const n = header.charCodeAt(0) | (header.charCodeAt(1) << 8) | (header.charCodeAt(2) << 16) | (header.charCodeAt(3) << 24);
+    // >>> 0 reads the four bytes as an unsigned number (a plain << 24 can come out negative).
+    const n = (header.charCodeAt(0) | (header.charCodeAt(1) << 8) | (header.charCodeAt(2) << 16) | (header.charCodeAt(3) << 24)) >>> 0;
+    if (n > MAX_FRAME_BYTES) {
+      logProblem("browser-search-for-alfred helper: message too large, exiting");
+      $.exit(1);
+    }
     const total = Number(inbox.length);
     if (total < 4 + n) return;
     const json = ObjC.unwrap(
@@ -153,7 +188,12 @@ function drainInbox() {
     } catch (e) {
       // A frame that is not JSON is dropped.
     }
-    handleFirefoxMessage(message);
+    // One bad message must not strand the frames that came with it.
+    try {
+      handleFirefoxMessage(message);
+    } catch (e) {
+      logProblem("browser-search-for-alfred helper: could not handle a message from Firefox");
+    }
   }
 }
 
@@ -163,6 +203,13 @@ function handleRequestNotification(id) {
   if (typeof id !== "string" || !ID_PATTERN.test(id)) return;
   sweep();
   const requestFile = `${PRIVATE_DIR}/${id}.request.json`;
+  const size = fileSize(requestFile);
+  if (size === null) return;
+  if (size > MAX_REQUEST_BYTES) {
+    // Not from our client: delete it unread and say nothing.
+    removeFile(requestFile);
+    return;
+  }
   const text = readText(requestFile);
   if (text === null) return;
   removeFile(requestFile);
@@ -173,6 +220,18 @@ function handleRequestNotification(id) {
     return;
   }
   if (request === null || typeof request !== "object" || typeof request.command !== "string") return;
+  if (!ALLOWED_COMMANDS.includes(request.command)) {
+    writeReply(id, { id, error: "unsupported command" });
+    return;
+  }
+  if (request.command === "activate-tab") {
+    // Both IDs must be integers; the add-on checks again, but a malformed request never leaves this file.
+    const params = request.params;
+    if (params === null || typeof params !== "object" || !Number.isInteger(params.tabId) || !Number.isInteger(params.windowId)) {
+      writeReply(id, { id, error: "invalid params" });
+      return;
+    }
+  }
   pending[id] = Date.now();
   // params is forwarded exactly as received: 0, false and "" are real values.
   sendToFirefox({ id, command: request.command, params: request.params });
@@ -184,14 +243,27 @@ ObjC.registerSubclass({
     "onStdin:": {
       types: ["void", ["id"]],
       implementation: function (note) {
+        // Not being able to read the data counts as end of input: re-arming a broken read could spin.
+        let data = null;
         try {
-          const data = note.userInfo.objectForKey($.NSFileHandleNotificationDataItem);
-          // End of file: Firefox closed our stdin. (A plain `data.length === 0` never matched here.)
-          if (data.isNil() || Number(data.length) === 0) $.exit(0);
+          data = note.userInfo.objectForKey($.NSFileHandleNotificationDataItem);
+        } catch (e) {
+          $.exit(0);
+        }
+        // End of file: Firefox closed our stdin. (A plain `data.length === 0` never matched here.)
+        let ended = true;
+        try {
+          ended = data.isNil() || Number(data.length) === 0;
+        } catch (e) {
+          // ended stays true
+        }
+        if (ended) $.exit(0);
+        try {
           inbox.appendData(data);
           drainInbox();
         } catch (e) {
           // Never throw out of a callback: it is swallowed, and the read must be re-armed.
+          logProblem("browser-search-for-alfred helper: could not read from Firefox");
         }
         stdin.readInBackgroundAndNotify;
       },
@@ -202,7 +274,8 @@ ObjC.registerSubclass({
         try {
           handleRequestNotification(ObjC.unwrap(note.object));
         } catch (e) {
-          // Ignore: one bad request must not stop the helper.
+          // One bad request must not stop the helper.
+          logProblem("browser-search-for-alfred helper: could not handle a request");
         }
       },
     },

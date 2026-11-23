@@ -99,7 +99,7 @@ test("frames split across chunks and two frames in one chunk are both read", { s
   const waiting = [];
   await withHelper(
     (message, ff) => {
-      if (message.command === "split") {
+      if (message.params && message.params.kind === "split") {
         const bytes = frame({ id: message.id, payload: { text: "split ✓ 日本" } });
         const third = Math.ceil(bytes.length / 3);
         const pieces = [bytes.subarray(0, 2), bytes.subarray(2, third + 3), bytes.subarray(third + 3)];
@@ -108,14 +108,14 @@ test("frames split across chunks and two frames in one chunk are both read", { s
         // Hold the first one until the second arrives, then answer both in a single write.
         waiting.push(message);
         if (waiting.length === 2) {
-          ff.write(Buffer.concat(waiting.map((m) => frame({ id: m.id, payload: m.command }))));
+          ff.write(Buffer.concat(waiting.map((m) => frame({ id: m.id, payload: m.params.kind }))));
         }
       }
     },
     async (fx) => {
-      const split = await request(fx, "split", {});
+      const split = await request(fx, "list-tabs", { kind: "split" });
       assert.deepEqual(split.result, { ok: true, payload: { text: "split ✓ 日本" } });
-      const [a, b] = await Promise.all([request(fx, "first", {}), request(fx, "second", {})]);
+      const [a, b] = await Promise.all([request(fx, "list-tabs", { kind: "first" }), request(fx, "list-tabs", { kind: "second" })]);
       assert.deepEqual(a.result, { ok: true, payload: "first" });
       assert.deepEqual(b.result, { ok: true, payload: "second" });
     },
@@ -126,7 +126,7 @@ test("a parameter of 0 reaches Firefox as 0", { skip: !darwin }, async () => {
   await withHelper(
     (message, ff) => ff.send({ id: message.id, payload: null }),
     async (fx, ff) => {
-      await request(fx, "close-tab", 0);
+      await request(fx, "list-tabs", 0);
       assert.equal(ff.received.length, 1);
       assert.ok("params" in ff.received[0]);
       assert.strictEqual(ff.received[0].params, 0);
@@ -138,7 +138,7 @@ test("an error reply comes back as {ok:false, error}", { skip: !darwin }, async 
   await withHelper(
     (message, ff) => ff.send({ id: message.id, error: "no such tab" }),
     async (fx) => {
-      const { result } = await request(fx, "activate-tab", { tabId: 9 });
+      const { result } = await request(fx, "activate-tab", { tabId: 9, windowId: 1 });
       assert.deepEqual(result, { ok: false, error: "no such tab" });
       assert.deepEqual(readdirSync(fx.privateDir), [], "no request or reply file is left behind");
     },
@@ -178,11 +178,11 @@ test("a reply that arrives after the client timed out is swept and leaves nothin
   await withHelper(
     (message, ff) => {
       // "late" is answered after the client has given up; anything else is answered at once.
-      if (message.command === "late") setTimeout(() => ff.send({ id: message.id, payload: "x".repeat(1000) }), 700);
+      if (message.params && message.params.kind === "late") setTimeout(() => ff.send({ id: message.id, payload: "x".repeat(1000) }), 700);
       else ff.send({ id: message.id, payload: "ok" });
     },
     async (fx) => {
-      const { result } = await request(fx, "late", {}, 200);
+      const { result } = await request(fx, "list-tabs", { kind: "late" }, 200);
       assert.deepEqual(result, { ok: false, error: "timeout" });
       assert.deepEqual(readdirSync(fx.privateDir), [], "the client cleaned up its own files");
       // The add-on answers anyway: the helper writes a reply file that nobody will read.
@@ -313,4 +313,123 @@ test("start then finish with no helper times out within the budget counted from 
   assert.deepEqual(result, { ok: false, error: "timeout" });
   assert.ok(elapsedMs < 600, `took ${elapsedMs} ms`);
   assert.deepEqual(readdirSync(fx.privateDir), []);
+});
+
+// ---- allow-list, params, size limits, hardening ----------------------------------------------
+
+// Lets the helper settle, then checks that nothing reached the fake Firefox.
+const settle = (ms = 400) => new Promise((resolve) => setTimeout(resolve, ms));
+
+test("an unsupported command gets an error reply and Firefox receives nothing", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: "ok" }),
+    async (fx, ff) => {
+      for (const command of ["close-tab", "eval", "constructor", ""]) {
+        const { result } = await request(fx, command, {});
+        assert.deepEqual(result, { ok: false, error: "unsupported command" }, `command ${JSON.stringify(command)}`);
+      }
+      assert.equal(ff.received.length, 0, "nothing was forwarded to Firefox");
+      assert.deepEqual(readdirSync(fx.privateDir), [], "no request or reply file is left behind");
+      const { result } = await request(fx, "list-tabs", {});
+      assert.deepEqual(result, { ok: true, payload: "ok" });
+    },
+  );
+});
+
+test("activate-tab without integer tabId and windowId gets invalid params and is not forwarded", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: true }),
+    async (fx, ff) => {
+      const bad = [
+        {},
+        null,
+        "5",
+        { windowId: 1 },
+        { tabId: 5 },
+        { tabId: "5", windowId: 1 },
+        { tabId: 5, windowId: "1" },
+        { tabId: 5.5, windowId: 1 },
+        { tabId: 5, windowId: null },
+        { tabId: true, windowId: 1 },
+      ];
+      for (const params of bad) {
+        const { result } = await request(fx, "activate-tab", params);
+        assert.deepEqual(result, { ok: false, error: "invalid params" }, `params ${JSON.stringify(params)}`);
+      }
+      assert.equal(ff.received.length, 0, "nothing was forwarded to Firefox");
+      const { result } = await request(fx, "activate-tab", { tabId: 5, windowId: 1 });
+      assert.deepEqual(result, { ok: true, payload: true });
+      assert.equal(ff.received.length, 1);
+    },
+  );
+});
+
+test("a request file over 16 KB is deleted, not forwarded and not answered", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: "ok" }),
+    async (fx, ff) => {
+      const id = "999-1-big";
+      const file = path.join(fx.privateDir, `${id}.request.json`);
+      const body = JSON.stringify({ id, command: "list-tabs", params: { pad: "x".repeat(17 * 1024) } });
+      assert.ok(Buffer.byteLength(body) > 16 * 1024);
+      writeFileSync(file, body);
+      await osascript(fx, ["post", constants.notificationName("request", fx.channel), id]);
+      await settle();
+      assert.equal(existsSync(file), false, "the oversized request file was deleted");
+      assert.deepEqual(readdirSync(fx.privateDir), [], "no reply was written");
+      assert.equal(ff.received.length, 0, "nothing was forwarded to Firefox");
+      // Still serving, and a request just under the limit goes through.
+      const small = await request(fx, "list-tabs", { pad: "x".repeat(8 * 1024) });
+      assert.deepEqual(small.result, { ok: true, payload: "ok" });
+    },
+  );
+});
+
+test("a Firefox reply with an unsafe or never-requested id writes nothing", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: "ok" }),
+    async (fx, ff) => {
+      const before = listAll(fx.home);
+      ff.send({ id: "../x", payload: "evil" });
+      ff.send({ id: "never-requested", payload: "evil" });
+      ff.send({ id: "constructor", payload: "evil" });
+      ff.send({ id: "toString", payload: "evil" });
+      ff.send({ id: 7, payload: "evil" });
+      await settle();
+      assert.deepEqual(listAll(fx.home), before, "no file appeared anywhere under HOME");
+      const { result } = await request(fx, "list-tabs", {});
+      assert.deepEqual(result, { ok: true, payload: "ok" });
+    },
+  );
+});
+
+test("a frame longer than 64 MB makes the helper exit with a message on stderr", { skip: !darwin }, async () => {
+  for (const header of [Buffer.from([0x01, 0x00, 0x00, 0x04]), Buffer.from([0xff, 0xff, 0xff, 0xff])]) {
+    const fx = fixture();
+    const firefox = startFakeFirefox({ home: fx.home, channel: fx.channel, handler: () => {} });
+    try {
+      await firefox.ready(fx.privateDir);
+      firefox.write(header);
+      const outcome = await Promise.race([firefox.exited, new Promise((resolve) => setTimeout(() => resolve("still running"), 3000))]);
+      assert.notEqual(outcome, "still running", `the helper did not exit for header ${header.toString("hex")}`);
+      assert.notEqual(outcome.code, 0);
+      assert.match(firefox.stderr, /\S/, "something was written to stderr");
+      assert.doesNotMatch(firefox.stderr, /evil|\/Users|\/var\//, "the line carries no data");
+    } finally {
+      await firefox.stop();
+    }
+  }
+});
+
+test("a 64 MB header that is exactly at the limit is still waited for, not refused", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const firefox = startFakeFirefox({ home: fx.home, channel: fx.channel, handler: () => {} });
+  try {
+    await firefox.ready(fx.privateDir);
+    firefox.write(Buffer.from([0x00, 0x00, 0x00, 0x04])); // 64 MiB exactly
+    await settle(600);
+    assert.equal(firefox.child.exitCode, null, "still running");
+  } finally {
+    await firefox.stop();
+  }
 });
