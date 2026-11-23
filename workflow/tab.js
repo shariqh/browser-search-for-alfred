@@ -25,11 +25,10 @@ function loadLib(name) {
   return eval(ObjC.unwrap(text));
 }
 
-function firefoxItems() {
+function firefoxItems(items) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
   const registration = loadLib("registration");
-  const items = loadLib("items");
   const home = jxa.home();
 
   const helperCopy = constants.helperInstallPath(home);
@@ -60,7 +59,34 @@ function firefoxItems() {
   );
 }
 
+// Alfred needs exactly one JSON document on stdout whatever happens, so nothing may escape run().
+// This item is built by hand, without the libraries, because loading them may be what failed.
+// It never carries the exception text, which could hold browser data.
+function errorOutput() {
+  return JSON.stringify({
+    skipknowledge: true,
+    items: [
+      {
+        title: "Browser Search hit an error",
+        subtitle: "Reinstall the workflow, or report this at the project's GitHub page",
+        valid: false,
+      },
+    ],
+  });
+}
+
 function run() {
-  const items = loadLib("items");
-  return JSON.stringify(items.scriptFilterOutput(firefoxItems()));
+  try {
+    const items = loadLib("items");
+    let found;
+    try {
+      found = firefoxItems(items);
+    } catch (e) {
+      // A Firefox failure must not hide other browsers' tabs; it looks like a request that got no answer.
+      found = [items.firefoxSilentItem()];
+    }
+    return JSON.stringify(items.scriptFilterOutput(found));
+  } catch (e) {
+    return errorOutput();
+  }
 }

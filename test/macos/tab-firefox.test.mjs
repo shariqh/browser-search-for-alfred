@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, cpSync, existsSync, writeFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -143,4 +143,36 @@ test("act.js activate sends activate-tab with the given IDs and brings Firefox f
       assert.equal(readFileSync(path.join(fx.home, "activated-apps.log"), "utf8"), "org.mozilla.firefox\n");
     },
   );
+});
+
+test("a payload that makes Firefox handling throw still prints one JSON document", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await setup(fx);
+  await withFirefox(
+    fx,
+    (message, ff) => ff.send({ id: message.id, payload: [null] }),
+    async () => {
+      const { output } = await tab(fx);
+      assert.equal(output.skipknowledge, true);
+      assert.equal(output.items.length, 1);
+      assert.equal(output.items[0].title, "Firefox didn't answer");
+      assert.equal(output.items[0].valid, false);
+    },
+  );
+});
+
+test("a broken library still prints one JSON error item without exception text", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const copy = path.join(fx.home, "workflow copy");
+  cpSync(workflowDir, copy, { recursive: true });
+  writeFileSync(path.join(copy, "lib", "items.js"), "this is not ( valid javascript SECRET-MARKER");
+  const { stdout } = await execFileAsync("/usr/bin/osascript", ["-l", "JavaScript", path.join(copy, "tab.js"), ""], {
+    env: { ...process.env, HOME: fx.home, BSA_TEST_CHANNEL: fx.channel, BSA_TEST_FIREFOX_RUNNING: "1" },
+  });
+  const output = JSON.parse(stdout);
+  assert.equal(output.skipknowledge, true);
+  assert.equal(output.items.length, 1);
+  assert.equal(output.items[0].title, "Browser Search hit an error");
+  assert.equal(output.items[0].valid, false);
+  assert.ok(!stdout.includes("SECRET-MARKER"));
 });
