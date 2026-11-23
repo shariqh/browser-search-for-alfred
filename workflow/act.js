@@ -68,7 +68,9 @@ function activate(request) {
     // Chrome is only touched while it runs, so a closed Chrome is never launched by Enter.
     if (!jxa.isRunning(constants.CHROME_BUNDLE_ID)) return;
     // A tab or window that closed since the list was shown makes this do nothing.
-    loadLib("chromium").activateTab(Application("Google Chrome"), String(request.windowId), String(request.tabId));
+    // By bundle ID, like the isRunning check. A Chrome that quits in the few milliseconds between the two could
+    // be relaunched by JXA; that window is accepted.
+    loadLib("chromium").activateTab(Application(constants.CHROME_BUNDLE_ID), String(request.windowId), String(request.tabId));
     return;
   }
   throw new Error(`unknown browser: ${request.browser}`);

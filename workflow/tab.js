@@ -104,7 +104,9 @@ function chromeItems(items) {
   if (jxa.channel() !== "") {
     app = testChromeApp(jxa);
   } else if (jxa.isRunning(constants.CHROME_BUNDLE_ID)) {
-    app = Application("Google Chrome");
+    // By bundle ID, like the isRunning check. A Chrome that quits in the few milliseconds between the two could
+    // be relaunched by JXA; that window is accepted.
+    app = Application(constants.CHROME_BUNDLE_ID);
   }
   if (!app) return [];
 
