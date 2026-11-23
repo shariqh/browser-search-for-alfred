@@ -9,7 +9,8 @@
       if (command === "list-tabs") {
         const tabs = await browser.tabs.query({});
         const payload = tabs
-          .filter((t) => t.id !== browser.tabs.TAB_ID_NONE)
+          // Private browsing stays private: a tab in a private window never reaches Alfred.
+          .filter((t) => t.id !== browser.tabs.TAB_ID_NONE && t.incognito !== true)
           .map((t) => ({
             id: t.id,
             windowId: t.windowId,

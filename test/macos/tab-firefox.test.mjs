@@ -145,18 +145,30 @@ test("act.js activate sends activate-tab with the given IDs and brings Firefox f
   );
 });
 
-test("a payload that makes Firefox handling throw still prints one JSON document", { skip: !darwin }, async () => {
+test("an exception while finishing the Firefox request still prints one JSON document", { skip: !darwin }, async () => {
+  // No payload shape makes the item code throw any more (bad entries are skipped), so break finish() in a copy.
   const fx = fixture();
   await setup(fx);
+  const copy = path.join(fx.home, "workflow copy");
+  cpSync(workflowDir, copy, { recursive: true });
+  const clientFile = path.join(copy, "lib", "firefox-client.js");
+  const original = readFileSync(clientFile, "utf8");
+  const broken = original.replace("function finish(pending, timeoutMs) {", "function finish(pending, timeoutMs) { throw new Error('SECRET-MARKER');");
+  assert.notEqual(broken, original);
+  writeFileSync(clientFile, broken);
   await withFirefox(
     fx,
-    (message, ff) => ff.send({ id: message.id, payload: [null] }),
+    (message, ff) => ff.send({ id: message.id, payload: tabs }),
     async () => {
-      const { output } = await tab(fx);
+      const { stdout } = await execFileAsync("/usr/bin/osascript", ["-l", "JavaScript", path.join(copy, "tab.js"), ""], {
+        env: { ...process.env, HOME: fx.home, BSA_TEST_CHANNEL: fx.channel, BSA_TEST_FIREFOX_RUNNING: "1" },
+      });
+      const output = JSON.parse(stdout);
       assert.equal(output.skipknowledge, true);
       assert.equal(output.items.length, 1);
       assert.equal(output.items[0].title, "Firefox didn't answer");
       assert.equal(output.items[0].valid, false);
+      assert.equal(stdout.includes("SECRET-MARKER"), false);
     },
   );
 });
@@ -175,4 +187,23 @@ test("a broken library still prints one JSON error item without exception text",
   assert.equal(output.items[0].title, "Browser Search hit an error");
   assert.equal(output.items[0].valid, false);
   assert.ok(!stdout.includes("SECRET-MARKER"));
+});
+
+test("payload entries that aren't tab objects are skipped, not treated as a failed list", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await setup(fx);
+  const good = { id: 21, windowId: 3, index: 0, title: "Good", url: "https://example.com/good", active: true };
+  const payload = [null, good, { id: "x" }, 7, "text", [], { id: 22 }, { windowId: 3 }, { id: "22", windowId: 3, title: "String id" }];
+  await withFirefox(
+    fx,
+    (message, ff) => ff.send({ id: message.id, payload }),
+    async () => {
+      const { output } = await tab(fx);
+      assert.deepEqual(
+        output.items.map((item) => item.title),
+        ["Good"],
+      );
+      assert.deepEqual(JSON.parse(output.items[0].arg), { action: "activate", browser: "firefox", windowId: 3, tabId: 21 });
+    },
+  );
 });

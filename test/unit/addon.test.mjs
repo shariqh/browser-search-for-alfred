@@ -120,3 +120,19 @@ test("activate-tab accepts 0 as a tab or window ID", async () => {
   assert.deepEqual(r, { id: "z", payload: true });
   assert.equal(b.calls.length, 2);
 });
+
+test("list-tabs leaves out tabs in private windows", async () => {
+  const b = fakeBrowser({
+    tabs: [
+      { id: 1, windowId: 2, index: 0, title: "A", url: "https://a", active: true, incognito: false },
+      { id: 2, windowId: 3, index: 0, title: "Secret", url: "https://secret", active: true, incognito: true },
+      { id: 3, windowId: 2, index: 1, title: "C", url: "https://c", active: false },
+    ],
+  });
+  const r = await handleRequest(b, { id: "r5", command: "list-tabs", params: {} });
+  assert.deepEqual(
+    r.payload.map((t) => t.id),
+    [1, 3],
+  );
+  assert.equal(JSON.stringify(r).includes("secret"), false);
+});

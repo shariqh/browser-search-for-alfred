@@ -60,7 +60,9 @@ function firefoxFinish(begun, items) {
   if (!reply.ok || !Array.isArray(reply.payload)) return [items.firefoxSilentItem()];
 
   const appPath = jxa.appPath(constants.FIREFOX_BUNDLE_ID);
-  return reply.payload.map((t) =>
+  // An entry that is not an object, or has no numeric id and windowId, is skipped; the rest still show.
+  const isTab = (t) => t !== null && typeof t === "object" && Number.isFinite(t.id) && Number.isFinite(t.windowId);
+  return reply.payload.filter(isTab).map((t) =>
     items.tabItem(
       { browser: "firefox", browserName: "Firefox", windowId: t.windowId, tabId: t.id, title: t.title || "", url: t.url || "" },
       appPath,
