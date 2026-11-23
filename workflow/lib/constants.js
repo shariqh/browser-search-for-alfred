@@ -19,6 +19,14 @@
     return `${home}/Library/Application Support/Google/Chrome`;
   }
 
+  function braveDataDir(home) {
+    return `${home}/Library/Application Support/BraveSoftware/Brave-Browser`;
+  }
+
+  function edgeDataDir(home) {
+    return `${home}/Library/Application Support/Microsoft Edge`;
+  }
+
   function safariBookmarksPath(home) {
     return `${home}/Library/Safari/Bookmarks.plist`;
   }
@@ -41,6 +49,8 @@
     FIREFOX_BUNDLE_ID: "org.mozilla.firefox",
     CHROME_BUNDLE_ID: "com.google.Chrome",
     SAFARI_BUNDLE_ID: "com.apple.Safari",
+    BRAVE_BUNDLE_ID: "com.brave.Browser",
+    EDGE_BUNDLE_ID: "com.microsoft.edgemac",
     FIREFOX_TIMEOUT_MS: 400,
     // History: each browser returns at most this many rows, and sqlite3 gets this long to answer.
     HISTORY_LIMIT: 50,
@@ -49,6 +59,8 @@
     helperInstallPath,
     registrationPath,
     chromeDataDir,
+    braveDataDir,
+    edgeDataDir,
     safariBookmarksPath,
     safariHistoryPath,
     notificationName,

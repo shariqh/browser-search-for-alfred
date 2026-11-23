@@ -97,7 +97,7 @@ test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script
   }
 });
 
-test("Configure Workflow has three keyword fields and three browser checkboxes", { skip: !darwin }, () => {
+test("Configure Workflow has three keyword fields and five browser checkboxes", { skip: !darwin }, () => {
   const keyword = (variable, label, value) => ({
     type: "textfield",
     variable,
@@ -119,6 +119,8 @@ test("Configure Workflow has three keyword fields and three browser checkboxes",
     browser("browser_firefox", "Browsers", "Firefox"),
     browser("browser_chrome", "", "Google Chrome"),
     browser("browser_safari", "", "Safari"),
+    browser("browser_brave", "", "Brave Browser"),
+    browser("browser_edge", "", "Microsoft Edge"),
   ]);
 });
 
@@ -126,6 +128,7 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
   const lines = zipList(workflowZip);
   const names = lines.map((l) => l.trim().split(/\s+/).pop());
   const libs = [
+    "browsers",
     "chromium-files",
     "chromium",
     "config",
