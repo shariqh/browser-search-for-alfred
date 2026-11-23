@@ -12,7 +12,8 @@ Work in progress. The design is in [docs/superpowers/specs/2026-11-21-browser-se
 ## Development
 
 - `npm test` runs the unit tests. They run anywhere with Node 24.
-- `npm run test:macos` runs the tests that need macOS (JXA, `sqlite3`, `plutil`).
+- `npm run test:macos` runs the tests that need macOS. They use `osascript` (JXA), `plutil` and `unzip`, and `zip` through `scripts/build.sh`, which macOS includes. No browser needs to be installed: the tests use a fake Firefox and a fixture folder as `HOME`, and never touch your real `~/Library` or any running browser.
+- `npm run check:firefox` is not part of the tests. It writes the real registration to `~/Library` (see below) and opens a separate Firefox window with a throwaway profile. Your own Firefox is left alone.
 
 ## Build
 
@@ -28,3 +29,16 @@ Work in progress. The design is in [docs/superpowers/specs/2026-11-21-browser-se
 3. Choose Load Temporary Add-on... and pick `manifest.json` from the unzipped folder.
 
 The add-on stays loaded until Firefox restarts; load it again after a restart.
+
+## What Set up Firefox writes, and how to undo it
+
+The first time you use `tab` with Firefox, the workflow shows "Set up Firefox". Pressing Return writes two files, and nothing else outside the workflow:
+
+1. A copy of the helper script: `~/Library/Application Support/io.github.shariqh.browser-search-for-alfred/firefox-helper.js`
+2. The file that tells Firefox where the helper is: `~/Library/Application Support/Mozilla/NativeMessagingHosts/io.github.shariqh.browser_search_for_alfred.json`
+
+To undo it, move both files to the Trash (Finder: Go > Go to Folder, paste each folder, drag the file to the Trash). Firefox then no longer knows about the helper, and `tab` offers "Set up Firefox" again. While it runs, the helper also keeps short-lived request files in `~/Library/Caches/io.github.shariqh.browser-search-for-alfred/firefox`; that folder is safe to move to the Trash too.
+
+## If Chrome tabs don't show
+
+The first time `tab` lists Chrome tabs, macOS asks whether Alfred may control Google Chrome. If you chose Don't Allow, or never saw the question, open System Settings > Privacy & Security > Automation, find Alfred, and switch on Google Chrome. Chrome tabs only show while Chrome is running; the workflow never starts it.
