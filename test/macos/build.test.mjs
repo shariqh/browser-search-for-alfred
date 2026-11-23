@@ -60,6 +60,7 @@ test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script
     ...tab.config,
     keyword: "{var:keyword_bookmarks}",
     title: "Search bookmarks",
+    runningsubtext: "Loading bookmarks…",
     script: '/usr/bin/osascript -l JavaScript ./bmk.js "$1"',
   });
   assert.equal(bmk.version, tab.version);

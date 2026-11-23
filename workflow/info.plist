@@ -151,7 +151,7 @@
 				<key>queuemode</key>
 				<integer>1</integer>
 				<key>runningsubtext</key>
-				<string>Loading tabs...</string>
+				<string>Loading bookmarks…</string>
 				<key>script</key>
 				<string>/usr/bin/osascript -l JavaScript ./bmk.js "$1"</string>
 				<key>scriptargtype</key>
