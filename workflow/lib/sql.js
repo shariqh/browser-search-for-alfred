@@ -20,9 +20,21 @@
       .join(" AND ");
   }
 
-  // Opens a browser's database read-only without needing its lock or its -wal file.
+  // The path with each part percent-encoded for a file: URI, keeping the slashes.
+  function encodedPath(path) {
+    return path.split("/").map(encodeURIComponent).join("/");
+  }
+
+  // Opens a browser's database read-only without needing its lock or its -wal file. It does not see rows still in
+  // the write-ahead log of a database in WAL mode.
   function immutableUri(path) {
-    return "file:" + path.split("/").map(encodeURIComponent).join("/") + "?immutable=1";
+    return "file:" + encodedPath(path) + "?immutable=1";
+  }
+
+  // Opens a database read-only through its lock and -wal file, so it also sees rows still in the write-ahead log.
+  // A writer holding an exclusive lock makes this read fail with "database is locked".
+  function readOnlyUri(path) {
+    return "file:" + encodedPath(path) + "?mode=ro";
   }
 
   // The arguments for /usr/bin/sqlite3: one read-only query on the database at `uri`, printed as JSON. sqlite3
@@ -32,7 +44,7 @@
     return ["-init", "/dev/null", "-readonly", "-json", uri, query];
   }
 
-  const api = { splitTerms, likeClause, immutableUri, sqliteArgs };
+  const api = { splitTerms, likeClause, immutableUri, readOnlyUri, sqliteArgs };
   if (typeof module === "object" && module && module.exports) module.exports = api;
   return api;
 })();

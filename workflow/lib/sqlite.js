@@ -39,17 +39,19 @@
     }
   }
 
-  // Starts sqlite3 on `dbPath` (opened read-only and immutable, so a browser's lock does not stop it) with
-  // its JSON output going to a fresh file in a private folder (700; the file is 600). The database URI is
-  // its own argument, never part of the SQL text. Leftovers of killed runs are swept first.
-  function start(dbPath, query) {
+  // Starts sqlite3 on `dbPath` with its JSON output going to a fresh file in a private folder (700; the file is
+  // 600). The database is opened read-only: by default immutable, so a browser's lock does not stop it; with
+  // `mode` "ro" through the lock and the -wal file instead (see sql.readOnlyUri). The database URI is its own
+  // argument, never part of the SQL text. Leftovers of killed runs are swept first.
+  function start(dbPath, query, mode) {
+    const uri = mode === "ro" ? sql.readOnlyUri(dbPath) : sql.immutableUri(dbPath);
     const pid = Number($.NSProcessInfo.processInfo.processIdentifier);
     const random = Math.random().toString(36).slice(2, 10);
     const handle = { outPath: `${outputDir()}/${pid}-${Date.now()}-${counter++}-${random}.json`, process: null };
     try {
       jxa.ensureDir(outputDir(), 0o700);
       sweep(outputDir());
-      handle.process = jxa.startProcess(SQLITE, sql.sqliteArgs(sql.immutableUri(dbPath), query), handle.outPath);
+      handle.process = jxa.startProcess(SQLITE, sql.sqliteArgs(uri, query), handle.outPath);
     } catch (e) {
       // handle.process stays null: finish() reports an error.
     }

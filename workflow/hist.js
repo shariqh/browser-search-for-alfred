@@ -103,7 +103,8 @@ function finishChrome(queries, deadlineMs) {
 }
 
 // Starts sqlite3 on Safari's History.db once macOS says it can be read. {denied: true}, {handle: null} when the
-// file is missing or unreadable, or {handle}.
+// file is missing or unreadable, or {handle, path, sql}. Safari keeps History.db open in WAL mode, so it is read
+// with mode=ro, which also sees the visits still in History.db-wal.
 function startSafari(query) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
@@ -111,12 +112,17 @@ function startSafari(query) {
   const access = jxa.accessResult(path);
   if (access === "denied") return { denied: true };
   if (access !== "ok") return { handle: null };
-  return { handle: loadLib("sqlite").start(path, loadLib("safari-files").historySql(query, constants.HISTORY_LIMIT)) };
+  const sql = loadLib("safari-files").historySql(query, constants.HISTORY_LIMIT);
+  return { handle: loadLib("sqlite").start(path, sql, "ro"), path, sql };
 }
 
-function finishSafari(handle, deadlineMs) {
-  if (handle === null) return [];
-  const result = loadLib("sqlite").finish(handle, deadlineMs);
+// Safari's entries from the query startSafari started. When that read fails (an exclusive lock on History.db, say),
+// the immutable read is tried once, within the same deadline; a timeout is not retried. A failure gives nothing.
+function finishSafari(safari, deadlineMs) {
+  if (safari.handle === null) return [];
+  const sqlite = loadLib("sqlite");
+  let result = sqlite.finish(safari.handle, deadlineMs);
+  if (!result.ok && result.reason === "error") result = sqlite.finish(sqlite.start(safari.path, safari.sql), deadlineMs);
   if (!result.ok) return [];
   const files = loadLib("safari-files");
   return result.rows.map((row) => ({
@@ -195,7 +201,7 @@ function run(argv) {
 
     try {
       if (safari.denied) notices.safari = [items.needsAccessItem("Safari")];
-      else lists.safari = finishSafari(safari.handle, deadlineMs);
+      else lists.safari = finishSafari(safari, deadlineMs);
     } catch (e) {}
 
     // Firefox has its own timeout, counted from when its request was sent. The reply becomes entries here, and

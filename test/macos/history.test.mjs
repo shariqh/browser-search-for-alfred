@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ import { startFakeFirefox, workflowDir } from "./fake-firefox.mjs";
 // real browser data.
 const require = createRequire(import.meta.url);
 const constants = require("../../workflow/lib/constants.js");
+const sql = require("../../workflow/lib/sql.js");
 const execFileAsync = promisify(execFile);
 const darwin = process.platform === "darwin";
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -259,4 +260,80 @@ test("Firefox not set up puts its setup item first; unticked browsers are not re
   const { output } = await hist(fx, "", { browser_chrome: "0" });
   assert.equal(output.items[0].title, "Set up Firefox");
   assert.deepEqual(urls(output).slice(1), ["https://safari.example.com/x", "https://safari.example.com/sale"]);
+});
+
+// A background /usr/bin/sqlite3 on `db` that runs `statements` and keeps its connection open until release().
+// `ready` resolves once the statements have run. Nothing here can hang: the holder is killed after 10 s.
+function holdOpen(db, statements) {
+  const holder = spawn(SQLITE, ["-init", "/dev/null", "-batch", db], { stdio: ["pipe", "pipe", "pipe"] });
+  const exited = new Promise((resolve) => holder.on("exit", resolve));
+  const killer = setTimeout(() => holder.kill("SIGKILL"), 10000);
+  let output = "";
+  holder.stderr.on("data", (chunk) => (output += chunk));
+  const ready = new Promise((resolve, reject) => {
+    holder.stdout.on("data", (chunk) => {
+      output += chunk;
+      if (/^ready$/m.test(output)) resolve();
+    });
+    holder.on("exit", () => reject(new Error(`holder exited early: ${output}`)));
+  });
+  holder.stdin.write(`${statements}\nSELECT 'ready';\n`);
+  const release = async () => {
+    holder.stdin.end();
+    await exited;
+    clearTimeout(killer);
+  };
+  return { ready, release };
+}
+
+// Reads `sqlQuery` from `uri` the way a one-off sqlite3 would, giving its rows or its error text.
+async function readUri(uri, sqlQuery) {
+  try {
+    const { stdout } = await execFileAsync(SQLITE, sql.sqliteArgs(uri, sqlQuery));
+    return { rows: stdout.trim() === "" ? [] : JSON.parse(stdout) };
+  } catch (e) {
+    return { error: e.stderr };
+  }
+}
+
+// Safari keeps History.db open in WAL mode; a visit it just wrote may still be in History.db-wal.
+test("Safari's newest visit, still in the write-ahead log of an open History.db, is found", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const db = constants.safariHistoryPath(fx.home);
+  const newest = { url: "https://safari.example.com/newest", title: "Newest", ms: U + 9000 };
+  const writer = holdOpen(
+    db,
+    "PRAGMA journal_mode=WAL;\nPRAGMA wal_autocheckpoint=0;\n" +
+      `INSERT INTO history_items(id, url) VALUES (99, ${quote(newest.url)});\n` +
+      `INSERT INTO history_visits(history_item, visit_time, title) VALUES (99, ${safariTime(newest.ms)}, ${quote(newest.title)});`,
+  );
+  try {
+    await writer.ready;
+    // The visit is only in the WAL, which an immutable read does not see.
+    assert.ok(statSync(`${db}-wal`).size > 0);
+    assert.deepEqual(await readUri(sql.immutableUri(db), "SELECT url FROM history_items WHERE id = 99"), { rows: [] });
+    const { output } = await hist(fx, "", { browser_chrome: "0" });
+    assert.equal(output.items[0].title, "Set up Firefox");
+    assert.deepEqual(urls(output).slice(1), [newest.url, "https://safari.example.com/x", "https://safari.example.com/sale"]);
+  } finally {
+    await writer.release();
+  }
+});
+
+test("when an exclusive lock stops the read-only read of Safari's history, the immutable read still gives it", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const db = constants.safariHistoryPath(fx.home);
+  const locker = holdOpen(db, "PRAGMA journal_mode=DELETE;\nPRAGMA locking_mode=EXCLUSIVE;\nBEGIN EXCLUSIVE;");
+  try {
+    await locker.ready;
+    const plain = await readUri(sql.readOnlyUri(db), "SELECT url FROM history_items");
+    assert.match(plain.error || "", /database is locked/);
+    const { output } = await hist(fx, "", { browser_chrome: "0" });
+    assert.deepEqual(
+      output.items.map((item) => item.title),
+      ["Set up Firefox", "it s 50 percent", "Sale: it's 50% today"],
+    );
+  } finally {
+    await locker.release();
+  }
 });

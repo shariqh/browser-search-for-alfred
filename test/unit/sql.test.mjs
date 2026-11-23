@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { splitTerms, likeClause, immutableUri, sqliteArgs } = require("../../workflow/lib/sql.js");
+const { splitTerms, likeClause, immutableUri, readOnlyUri, sqliteArgs } = require("../../workflow/lib/sql.js");
 
 test("splitTerms splits on any whitespace, drops empty strings and keeps the first 10", () => {
   assert.deepEqual(splitTerms("  a  b\tc\nd "), ["a", "b", "c", "d"]);
@@ -48,6 +48,11 @@ test("likeClause uses at most 10 terms", () => {
 test("immutableUri percent-encodes each path part and keeps the slashes", () => {
   assert.equal(immutableUri("/a b/c#d?.db"), "file:/a%20b/c%23d%3F.db?immutable=1");
   assert.equal(immutableUri("/Users/x/History"), "file:/Users/x/History?immutable=1");
+});
+
+test("readOnlyUri percent-encodes each path part the same way and asks for mode=ro", () => {
+  assert.equal(readOnlyUri("/a b/c#d?.db"), "file:/a%20b/c%23d%3F.db?mode=ro");
+  assert.equal(readOnlyUri("/Users/x/Library/Safari/History.db"), "file:/Users/x/Library/Safari/History.db?mode=ro");
 });
 
 test("sqliteArgs starts sqlite3 with -init /dev/null, so the person's ~/.sqliterc never changes the output", () => {
