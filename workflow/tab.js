@@ -56,6 +56,7 @@ function testChromeApp(jxa) {
     running: () => true,
     windows: {
       id: () => windows.map((w) => w.id),
+      mode: () => windows.map((w) => w.mode || "normal"),
       tabs: {
         id: () => perWindow((t) => t.id),
         title: () => perWindow((t) => t.title),
@@ -85,8 +86,8 @@ function chromeItems(items) {
 
   const appPath = jxa.appPath(constants.CHROME_BUNDLE_ID);
   return loadLib("chromium")
-    .listTabs(app, "Google Chrome")
-    .map((tab) => items.tabItem(tab, appPath));
+    .listTabs(app, loadLib("browsers").byKey("chrome"))
+    .tabs.map((tab) => items.tabItem(tab, appPath));
 }
 
 // Alfred needs exactly one JSON document on stdout whatever happens, so nothing may escape run().
