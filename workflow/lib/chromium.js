@@ -32,7 +32,8 @@
       if (modes.length !== windowIds.length) return { tabs: [], denied: false };
       const tabs = [];
       for (let w = 0; w < windowIds.length; w++) {
-        if (String(modes[w]) === "incognito") continue;
+        // Only a window that says "normal" is listed; incognito and anything unexpected are skipped.
+        if (String(modes[w]) !== "normal") continue;
         const ids = tabIds[w] || [];
         for (let t = 0; t < ids.length; t++) {
           tabs.push({

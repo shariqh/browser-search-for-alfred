@@ -322,6 +322,18 @@ test("a normal window after an incognito one keeps its own tabs", () => {
   assert.deepEqual(listTabs(app, chrome).map((t) => t.tabId), ["20"]);
 });
 
+test("a window whose mode is anything but \"normal\" contributes no tabs", () => {
+  for (const odd of ["Incognito", "private", "", undefined, null, 1]) {
+    const data = [
+      { id: "1", tabs: [{ id: "10", title: "Odd", url: "https://example.com/odd" }] },
+      { id: "2", tabs: [{ id: "20", title: "Public", url: "https://example.com/public" }] },
+    ];
+    const { app } = fakeChrome(data);
+    app.windows.mode = () => [odd, "normal"];
+    assert.deepEqual(listTabs(app, chrome).map((t) => t.tabId), ["20"], String(odd));
+  }
+});
+
 test("a mode list that does not line up with the windows gives no tabs rather than guessing", () => {
   const { app } = fakeChrome(twoWindows());
   app.windows.mode = () => ["normal"];
