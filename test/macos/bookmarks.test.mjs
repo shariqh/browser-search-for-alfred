@@ -201,7 +201,6 @@ test("act.js open logs the bundle ID and URL for each browser", { skip: !darwin 
     const out = await osascript(fx, "act.js", JSON.stringify({ action: "open", browser, url: `https://${browser}.example.com/a?b=c d` }));
     assert.equal(out, "");
   }
-  await osascript(fx, "act.js", JSON.stringify({ action: "open-default", url: "file:///tmp/x.html" }));
   await osascript(fx, "act.js", JSON.stringify({ action: "open-privacy" }));
   assert.equal(
     readFileSync(activationLog(fx), "utf8"),
@@ -209,11 +208,29 @@ test("act.js open logs the bundle ID and URL for each browser", { skip: !darwin 
       `open ${FIREFOX} https://firefox.example.com/a?b=c d`,
       `open ${CHROME} https://chrome.example.com/a?b=c d`,
       `open ${SAFARI} https://safari.example.com/a?b=c d`,
-      "open-default file:///tmp/x.html",
       "open-privacy",
       "",
     ].join("\n"),
   );
+});
+
+// ⌘↩ opens the URL in the default browser by its bundle ID, so a file: URL never goes to the file's own app.
+test("act.js open-default opens https: and file: URLs in the default browser", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const env = { BSA_TEST_DEFAULT_BROWSER: SAFARI };
+  await osascript(fx, "act.js", JSON.stringify({ action: "open-default", url: "https://example.com/x" }), env);
+  await osascript(fx, "act.js", JSON.stringify({ action: "open-default", url: "file:///tmp/run.command" }), env);
+  assert.equal(
+    readFileSync(activationLog(fx), "utf8"),
+    [`open-default ${SAFARI} https://example.com/x`, `open-default ${SAFARI} file:///tmp/run.command`, ""].join("\n"),
+  );
+});
+
+test("act.js open-default with no known default browser logs nothing and exits non-zero", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const request = JSON.stringify({ action: "open-default", url: "https://example.com/x" });
+  await assert.rejects(osascript(fx, "act.js", request, { BSA_TEST_DEFAULT_BROWSER: "" }), (err) => err.code !== 0);
+  assert.equal(existsSync(activationLog(fx)), false);
 });
 
 test("act.js refuses a javascript: URL, other unopenable URLs and an unknown browser: it logs nothing and exits non-zero", { skip: !darwin }, async () => {
@@ -229,7 +246,9 @@ test("act.js refuses a javascript: URL, other unopenable URLs and an unknown bro
     { action: "open-default" },
   ];
   for (const request of refused) {
-    await assert.rejects(osascript(fx, "act.js", JSON.stringify(request)), (err) => err.code !== 0, JSON.stringify(request));
+    // A default browser is known, so open-default is refused for its URL alone.
+    const env = { BSA_TEST_DEFAULT_BROWSER: SAFARI };
+    await assert.rejects(osascript(fx, "act.js", JSON.stringify(request), env), (err) => err.code !== 0, JSON.stringify(request));
   }
   assert.equal(existsSync(activationLog(fx)), false);
 });

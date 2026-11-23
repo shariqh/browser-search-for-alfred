@@ -108,6 +108,15 @@ function openInBrowser(request) {
   runOpen(["-b", bundleId, url], `open ${bundleId} ${url}`);
 }
 
+// Opens the URL in the default browser, by its bundle ID. A plain `open <url>` would hand a file: URL to the file's
+// own app, and could run a .command file or launch an app.
+function openInDefaultBrowser(request) {
+  const url = openableUrl(request.url);
+  const bundleId = loadLib("jxa").defaultBrowserBundleId();
+  if (bundleId === "") throw new Error("no default browser");
+  runOpen(["-b", bundleId, url], `open-default ${bundleId} ${url}`);
+}
+
 function run(argv) {
   const request = JSON.parse(argv[0] || "{}");
   switch (request.action) {
@@ -120,11 +129,9 @@ function run(argv) {
     case "open":
       openInBrowser(request);
       return;
-    case "open-default": {
-      const url = openableUrl(request.url);
-      runOpen([url], `open-default ${url}`);
+    case "open-default":
+      openInDefaultBrowser(request);
       return;
-    }
     case "open-privacy":
       runOpen([PRIVACY_PANE], "open-privacy");
       return;

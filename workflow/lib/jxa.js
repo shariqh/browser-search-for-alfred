@@ -237,6 +237,20 @@
     return idOf(workspace.frontmostApplication);
   }
 
+  // The bundle ID of the app macOS opens https: URLs with (the default browser), or "" when unknown. Asking for an
+  // https: URL, never the URL being opened, means a file: URL still goes to the browser, not to the file's own app.
+  // Under BSA_TEST_CHANNEL it is BSA_TEST_DEFAULT_BROWSER, so tests never depend on the real Mac.
+  function defaultBrowserBundleId() {
+    if (channel() !== "") return envVar("BSA_TEST_DEFAULT_BROWSER");
+    ObjC.import("AppKit");
+    const appURL = $.NSWorkspace.sharedWorkspace.URLForApplicationToOpenURL($.NSURL.URLWithString("https://example.com"));
+    if (appURL.isNil()) return "";
+    const bundle = $.NSBundle.bundleWithURL(appURL);
+    if (bundle.isNil()) return "";
+    const id = bundle.bundleIdentifier;
+    return id.isNil() ? "" : String(ObjC.unwrap(id));
+  }
+
   // The path of the installed app with that bundle ID, or null.
   function appPath(bundleId) {
     ObjC.import("AppKit");
@@ -266,6 +280,7 @@
     logActivation,
     activateApp,
     frontmostBundleId,
+    defaultBrowserBundleId,
     appPath,
   };
   if (typeof module === "object" && module && module.exports) module.exports = api;
