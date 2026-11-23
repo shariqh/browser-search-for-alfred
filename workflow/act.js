@@ -110,10 +110,9 @@ function openableUrl(url) {
 
 // Opens a bookmark or history URL in the browser it came from. This may start that browser: Return is an explicit ask.
 function openInBrowser(request) {
-  const constants = loadLib("constants");
-  const bundleIds = { firefox: constants.FIREFOX_BUNDLE_ID, chrome: constants.CHROME_BUNDLE_ID, safari: constants.SAFARI_BUNDLE_ID };
-  if (!Object.prototype.hasOwnProperty.call(bundleIds, request.browser)) throw new Error(`unknown browser: ${request.browser}`);
-  const bundleId = bundleIds[request.browser];
+  const browser = loadLib("browsers").byKey(request.browser);
+  if (!browser) throw new Error(`unknown browser: ${request.browser}`);
+  const bundleId = browser.bundleId;
   const url = openableUrl(request.url);
   runOpen(["-b", bundleId, url], `open ${bundleId} ${url}`);
 }
