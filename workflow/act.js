@@ -1,7 +1,7 @@
 #!/usr/bin/osascript -l JavaScript
 // Entry for actions: osascript -l JavaScript act.js '<json>'
 // The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox;
-// "activate" brings one browser tab to the front.
+// "activate" brings one browser tab (Firefox or Chrome) to the front.
 ObjC.import("Foundation");
 
 // The folder of this script. Alfred runs entries with the workflow folder as the current directory,
@@ -57,6 +57,18 @@ function activate(request) {
     const client = loadLib("firefox-client");
     client.request("activate-tab", { tabId: request.tabId, windowId: request.windowId }, constants.FIREFOX_TIMEOUT_MS);
     jxa.activateApp(constants.FIREFOX_BUNDLE_ID);
+    return;
+  }
+  if (request.browser === "chrome") {
+    // Tests never touch a real Chrome: the activation is only logged.
+    if (jxa.channel() !== "") {
+      jxa.logActivation(`chrome ${request.windowId} ${request.tabId}`);
+      return;
+    }
+    // Chrome is only touched while it runs, so a closed Chrome is never launched by Enter.
+    if (!jxa.isRunning(constants.CHROME_BUNDLE_ID)) return;
+    // A tab or window that closed since the list was shown makes this do nothing.
+    loadLib("chromium").activateTab(Application("Google Chrome"), String(request.windowId), String(request.tabId));
     return;
   }
   throw new Error(`unknown browser: ${request.browser}`);

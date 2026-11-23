@@ -105,12 +105,18 @@
     return Number($.NSRunningApplication.runningApplicationsWithBundleIdentifier(bundleId).count) > 0;
   }
 
+  // Under BSA_TEST_CHANNEL, activations are logged instead of performed: one line is appended to
+  // $HOME/activated-apps.log.
+  function logActivation(line) {
+    const log = `${home()}/activated-apps.log`;
+    writeTextAtomic(log, (readText(log) || "") + line + "\n", 0o600);
+  }
+
   // Brings a running app to the front without Apple Events. Under BSA_TEST_CHANNEL it activates
-  // nothing: it appends the bundle ID to $HOME/activated-apps.log and returns true.
+  // nothing: it logs the bundle ID (see logActivation) and returns true.
   function activateApp(bundleId) {
     if (channel() !== "") {
-      const log = `${home()}/activated-apps.log`;
-      writeTextAtomic(log, (readText(log) || "") + bundleId + "\n", 0o600);
+      logActivation(bundleId);
       return true;
     }
     ObjC.import("AppKit");
@@ -118,6 +124,17 @@
     if (Number(apps.count) === 0) return false;
     const options = $.NSApplicationActivateAllWindows | $.NSApplicationActivateIgnoringOtherApps;
     return Boolean(apps.objectAtIndex(0).activateWithOptions(options));
+  }
+
+  // The bundle ID of the frontmost app (Alfred itself while its panel is open), or "" when unknown.
+  // No Apple Events. Under BSA_TEST_CHANNEL it is BSA_TEST_FRONTMOST, so tests never depend on the real desktop.
+  function frontmostBundleId() {
+    if (channel() !== "") return envVar("BSA_TEST_FRONTMOST");
+    ObjC.import("AppKit");
+    const app = $.NSWorkspace.sharedWorkspace.frontmostApplication;
+    if (app.isNil()) return "";
+    const id = app.bundleIdentifier;
+    return id.isNil() ? "" : String(ObjC.unwrap(id));
   }
 
   // The path of the installed app with that bundle ID, or null.
@@ -141,7 +158,9 @@
     postNotification,
     waitFor,
     isRunning,
+    logActivation,
     activateApp,
+    frontmostBundleId,
     appPath,
   };
   if (typeof module === "object" && module && module.exports) module.exports = api;

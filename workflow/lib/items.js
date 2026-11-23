@@ -45,7 +45,15 @@
     return { skipknowledge: true, items };
   }
 
-  const api = { tabItem, setupItem, firefoxSilentItem, scriptFilterOutput };
+  // browsers = [{bundleId, items}] in the default order [firefox, chrome]. The browser that is frontmost
+  // moves to the front; any other frontmost app (Alfred's own panel, say) leaves the order alone.
+  function orderBrowsers(frontBundleId, browsers) {
+    const front = browsers.filter((b) => b.bundleId === frontBundleId);
+    const rest = browsers.filter((b) => b.bundleId !== frontBundleId);
+    return front.concat(rest);
+  }
+
+  const api = { tabItem, setupItem, firefoxSilentItem, scriptFilterOutput, orderBrowsers };
   if (typeof module === "object" && module && module.exports) module.exports = api;
   return api;
 })();

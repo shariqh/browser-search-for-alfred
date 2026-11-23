@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { tabItem, setupItem, firefoxSilentItem, scriptFilterOutput } = require("../../workflow/lib/items.js");
+const { tabItem, setupItem, firefoxSilentItem, scriptFilterOutput, orderBrowsers } = require("../../workflow/lib/items.js");
 
 const firefoxTab = {
   browser: "firefox",
@@ -69,4 +69,31 @@ test("firefoxSilentItem is not actionable", () => {
 test("scriptFilterOutput turns off Alfred's knowledge ranking", () => {
   const items = [{ title: "x" }];
   assert.deepEqual(scriptFilterOutput(items), { skipknowledge: true, items });
+});
+
+const FIREFOX = "org.mozilla.firefox";
+const CHROME = "com.google.Chrome";
+const browsers = () => [
+  { bundleId: FIREFOX, items: ["f"] },
+  { bundleId: CHROME, items: ["c"] },
+];
+
+test("orderBrowsers puts Chrome first when Chrome is frontmost", () => {
+  assert.deepEqual(orderBrowsers(CHROME, browsers()).map((b) => b.bundleId), [CHROME, FIREFOX]);
+});
+
+test("orderBrowsers keeps Firefox first when Firefox is frontmost", () => {
+  assert.deepEqual(orderBrowsers(FIREFOX, browsers()).map((b) => b.bundleId), [FIREFOX, CHROME]);
+});
+
+test("orderBrowsers keeps [firefox, chrome] when Alfred, nothing or something else is frontmost", () => {
+  for (const front of ["com.runningwithcrayons.Alfred", "", null, undefined, "com.apple.Safari"]) {
+    assert.deepEqual(orderBrowsers(front, browsers()).map((b) => b.bundleId), [FIREFOX, CHROME]);
+  }
+});
+
+test("orderBrowsers does not change the array it is given", () => {
+  const input = browsers();
+  orderBrowsers(CHROME, input);
+  assert.deepEqual(input.map((b) => b.bundleId), [FIREFOX, CHROME]);
 });
