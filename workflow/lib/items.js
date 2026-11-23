@@ -94,7 +94,10 @@
     return { skipknowledge: true, items };
   }
 
+  // Bookmark results all carry a uid; notice items (setup, "didn't answer", Allow) never do. Notices are not
+  // cached, so they go away as soon as the problem does. An empty list may be cached.
   function bookmarksOutput(items) {
+    if (!items.every((item) => typeof item.uid === "string")) return { items };
     return { cache: { seconds: 300, loosereload: true }, items };
   }
 

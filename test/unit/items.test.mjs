@@ -234,9 +234,20 @@ test("mergeHistory does not change the lists it is given", () => {
   assert.deepEqual(list.map((e) => e.url), ["a", "b"]);
 });
 
-test("bookmarksOutput lets Alfred cache for five minutes and historyOutput caches nothing", () => {
-  const items = [{ title: "x" }];
-  assert.deepEqual(bookmarksOutput(items), { cache: { seconds: 300, loosereload: true }, items });
+test("bookmarksOutput caches only when every item is a bookmark, and an empty list too", () => {
+  const urls = urlItems([{ title: "A", url: "https://a.example.com/" }]);
+  assert.deepEqual(bookmarksOutput(urls), { cache: { seconds: 300, loosereload: true }, items: urls });
+  assert.deepEqual(bookmarksOutput([]), { cache: { seconds: 300, loosereload: true }, items: [] });
+  for (const notice of [needsAccessItem("Safari"), setupItem("missing"), firefoxSilentItem()]) {
+    const mixed = [...urls, notice];
+    assert.deepEqual(bookmarksOutput(mixed), { items: mixed });
+    assert.equal("cache" in bookmarksOutput([notice]), false);
+  }
+});
+
+test("bookmarksOutput keeps the items as they are and historyOutput caches nothing", () => {
+  const items = [{ title: "x", uid: "https://x.example.com/" }];
+  assert.deepEqual(bookmarksOutput(items).items, items);
   assert.deepEqual(historyOutput(items), { items });
   assert.equal("skipknowledge" in bookmarksOutput(items), false);
   assert.equal("skipknowledge" in historyOutput(items), false);

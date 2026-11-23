@@ -163,6 +163,7 @@ test("a chmod-000 Safari Bookmarks.plist gives one Allow item, and Chrome's and 
       const output = await bmk(fx);
       assert.deepEqual(output.items.map((item) => item.title), [...firefoxTitles, ...chromeTitles, ALLOW_SAFARI]);
       assert.deepEqual(JSON.parse(output.items.at(-1).arg), { action: "open-privacy" });
+      assert.equal("cache" in output, false, "a notice must never be cached");
     });
   } finally {
     chmodSync(file, 0o600);

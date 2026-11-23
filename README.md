@@ -18,8 +18,8 @@ Three keywords, each searching the browsers ticked in Configure Workflow:
 - Command-Return opens a bookmark or history result in your default browser instead.
 - Command-C copies the result's URL.
 - Only `http`, `https` and `file` links are listed or opened. Bookmarks and history with other kinds of links (such as `javascript:` or `chrome://`) never appear.
-- History shows up to 50 results per browser, newest first. Matching ignores upper and lower case only for plain English letters; accented letters must match case exactly.
-- Bookmarks are kept for 5 minutes and refreshed in the background, so a bookmark you just added may take a few minutes to show up.
+- History shows up to 50 results per browser, newest first. For Chrome and Safari, matching ignores upper and lower case only for plain English letters; accented letters must match case exactly.
+- Bookmarks are kept for 5 minutes and refreshed in the background, so a bookmark you just added may take a few minutes to show up. Notices such as "Allow Alfred to read ..." or "Set up Firefox" are never kept, so they go away as soon as the problem is fixed.
 - Firefox bookmarks and history show only while Firefox is running, because they come through the add-on. Safari's and Chrome's are read from their files, so those browsers need not be running.
 
 ## Configuration
