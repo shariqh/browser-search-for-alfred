@@ -154,6 +154,43 @@ test("BSA_SKIP_CHROME=1 gives no Chrome items even when the Chrome tabs file is 
   });
 });
 
+test("browser_chrome=0 gives no Chrome items", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await setupFirefox(fx);
+  await withFirefox(fx, answerWithTabs, async () => {
+    const { output } = await tab(fx, {
+      BSA_TEST_FIREFOX_RUNNING: "1",
+      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      browser_chrome: "0",
+    });
+    assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two"]);
+  });
+});
+
+test("browser_firefox=0 gives no Firefox items and sends no request", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await setupFirefox(fx);
+  await withFirefox(fx, answerWithTabs, async (ff) => {
+    const { output } = await tab(fx, {
+      BSA_TEST_FIREFOX_RUNNING: "1",
+      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      browser_firefox: "0",
+    });
+    assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
+    assert.equal(ff.received.length, 0);
+  });
+});
+
+test("browser_firefox=0 hides the Set up Firefox item too", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const { output } = await tab(fx, {
+    BSA_TEST_FIREFOX_RUNNING: "1",
+    BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+    browser_firefox: "0",
+  });
+  assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
+});
+
 test("Firefox that does not answer still shows Chrome tabs within the time budget", { skip: !darwin }, async () => {
   const fx = fixture();
   await setupFirefox(fx);

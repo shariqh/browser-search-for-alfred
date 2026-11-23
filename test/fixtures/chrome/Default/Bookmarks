@@ -1,0 +1,41 @@
+{
+  "checksum": "00000000000000000000000000000000",
+  "roots": {
+    "bookmark_bar": {
+      "children": [
+        { "date_added": "13300000000000000", "guid": "00000000-0000-4000-8000-000000000001", "id": "4", "name": "Bar One", "type": "url", "url": "https://bar.example.com/one" },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [
+                    { "date_added": "13300000000000001", "guid": "00000000-0000-4000-8000-000000000002", "id": "8", "name": "Deep \"quoted\" 😀", "type": "url", "url": "https://deep.example.com/three" }
+                  ],
+                  "date_added": "13300000000000000", "guid": "00000000-0000-4000-8000-000000000003", "id": "7", "name": "Level 3", "type": "folder"
+                }
+              ],
+              "date_added": "13300000000000000", "guid": "00000000-0000-4000-8000-000000000004", "id": "6", "name": "Level 2", "type": "folder"
+            },
+            { "date_added": "13300000000000002", "guid": "00000000-0000-4000-8000-000000000005", "id": "9", "name": "Script", "type": "url", "url": "javascript:alert(1)" }
+          ],
+          "date_added": "13300000000000000", "guid": "00000000-0000-4000-8000-000000000006", "id": "5", "name": "Level 1", "type": "folder"
+        }
+      ],
+      "date_added": "13300000000000000", "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908", "id": "1", "name": "Bookmarks bar", "type": "folder"
+    },
+    "other": {
+      "children": [
+        { "date_added": "13300000000000003", "guid": "00000000-0000-4000-8000-000000000007", "id": "10", "name": "Other One", "type": "url", "url": "https://other.example.com/" }
+      ],
+      "date_added": "13300000000000000", "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd", "id": "2", "name": "Other bookmarks", "type": "folder"
+    },
+    "synced": {
+      "children": [
+        { "date_added": "13300000000000004", "guid": "00000000-0000-4000-8000-000000000008", "id": "11", "name": "Mobile One", "type": "url", "url": "https://mobile.example.com/" }
+      ],
+      "date_added": "13300000000000000", "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f", "id": "3", "name": "Mobile bookmarks", "type": "folder"
+    }
+  },
+  "version": 1
+}

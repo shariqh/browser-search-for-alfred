@@ -34,27 +34,113 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.1.0");
+  assert.equal(p.version, "0.2.0");
 });
 
-test("one Script Filter runs tab.js and connects to one Action Script running act.js", { skip: !darwin }, () => {
+const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
+const BMK_UID = "572B2677-9448-4E32-8DDD-FB5620821F8E";
+const HIST_UID = "37DBBC3C-BA3C-4F05-B920-DCEC8AC4BA52";
+const ACT_UID = "9BF9759C-CA14-401E-B046-511C2C64CE3A";
+
+test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script runs act.js", { skip: !darwin }, () => {
   const p = plistJson();
   const filters = p.objects.filter((o) => o.type === "alfred.workflow.input.scriptfilter");
-  assert.equal(filters.length, 1);
-  const filter = filters[0];
-  assert.equal(filter.config.keyword, "tab");
-  assert.match(filter.config.script, /osascript -l JavaScript \.\/tab\.js/);
+  assert.deepEqual(filters.map((f) => f.uid), [TAB_UID, BMK_UID, HIST_UID]);
+  const [tab, bmk, hist] = filters;
+  assert.equal(tab.config.keyword, "{var:keyword_tabs}");
+  assert.match(tab.config.script, /osascript -l JavaScript \.\/tab\.js/);
   const actions = p.objects.filter((o) => o.type === "alfred.workflow.action.script");
   assert.equal(actions.length, 1);
+  assert.equal(actions[0].uid, ACT_UID);
   assert.match(actions[0].config.script, /osascript -l JavaScript \.\/act\.js/);
-  const targets = (p.connections[filter.uid] || []).map((c) => c.destinationuid);
-  assert.deepEqual(targets, [actions[0].uid]);
+  assert.deepEqual((p.connections[TAB_UID] || []).map((c) => c.destinationuid), [ACT_UID]);
+
+  // bmk: the tab filter's config with its own keyword, title and script.
+  assert.deepEqual(bmk.config, {
+    ...tab.config,
+    keyword: "{var:keyword_bookmarks}",
+    title: "Search bookmarks",
+    runningsubtext: "Loading bookmarks…",
+    script: '/usr/bin/osascript -l JavaScript ./bmk.js "$1"',
+  });
+  assert.equal(bmk.version, tab.version);
+
+  // hist: Alfred does not filter; the script searches every time the query changes.
+  assert.equal(hist.config.keyword, "{var:keyword_history}");
+  assert.equal(hist.config.title, "Search history");
+  assert.equal(hist.config.script, '/usr/bin/osascript -l JavaScript ./hist.js "$1"');
+  for (const [key, value] of Object.entries({
+    alfredfiltersresults: false,
+    argumenttype: 1,
+    argumenttreatemptyqueryasnil: false,
+    argumenttrimmode: 0,
+    queuemode: 1,
+    queuedelaycustom: 3,
+    queuedelayimmediatelyinitially: true,
+    queuedelaymode: 0,
+    runningsubtext: "Searching history…",
+    withspace: true,
+  })) {
+    assert.equal(hist.config[key], value, key);
+  }
+
+  // Both connect to act.js twice: plain Return and ⌘Return.
+  for (const uid of [BMK_UID, HIST_UID]) {
+    assert.deepEqual(
+      (p.connections[uid] || []).map((c) => [c.destinationuid, c.modifiers]),
+      [
+        [ACT_UID, 0],
+        [ACT_UID, 1048576],
+      ],
+    );
+    assert.ok(p.uidata[uid], `uidata for ${uid}`);
+  }
+});
+
+test("Configure Workflow has three keyword fields and three browser checkboxes", { skip: !darwin }, () => {
+  const keyword = (variable, label, value) => ({
+    type: "textfield",
+    variable,
+    label,
+    description: "",
+    config: { default: value, placeholder: "", required: true, trim: true },
+  });
+  const browser = (variable, label, text) => ({
+    type: "checkbox",
+    variable,
+    label,
+    description: "",
+    config: { default: true, required: false, text },
+  });
+  assert.deepEqual(plistJson().userconfigurationconfig, [
+    keyword("keyword_tabs", "Tabs keyword", "tab"),
+    keyword("keyword_bookmarks", "Bookmarks keyword", "bmk"),
+    keyword("keyword_history", "History keyword", "hist"),
+    browser("browser_firefox", "Browsers", "Firefox"),
+    browser("browser_chrome", "", "Google Chrome"),
+    browser("browser_safari", "", "Safari"),
+  ]);
 });
 
 test("workflow zip has the workflow at its root and an executable helper", { skip: !darwin }, () => {
   const lines = zipList(workflowZip);
   const names = lines.map((l) => l.trim().split(/\s+/).pop());
-  for (const n of ["info.plist", "tab.js", "act.js", "firefox-helper.js", "lib/constants.js"]) {
+  const libs = [
+    "chromium-files",
+    "chromium",
+    "config",
+    "constants",
+    "firefox-client",
+    "firefox-source",
+    "items",
+    "jxa",
+    "registration",
+    "safari-files",
+    "sql",
+    "sqlite",
+  ];
+  const expected = ["info.plist", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
+  for (const n of expected) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("workflow/")));
@@ -66,4 +152,7 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   const names = zipList(addonZip).map((l) => l.trim().split(/\s+/).pop());
   assert.ok(names.includes("manifest.json"));
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("addon/")));
+  const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
+  assert.equal(manifest.version, "0.2.0");
+  assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
 });

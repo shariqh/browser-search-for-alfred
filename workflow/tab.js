@@ -25,49 +25,22 @@ function loadLib(name) {
   return eval(ObjC.unwrap(text));
 }
 
-// Firefox is asked in two steps so that Chrome can be listed while Firefox answers.
-// firefoxBegin returns {items} when there is nothing to wait for (a setup item, or Firefox is not running),
-// or {pending} after sending the request; firefoxFinish turns that into items.
-function firefoxBegin(items) {
+// Firefox's request steps live in lib/firefox-source.js, shared with the other keywords. Chrome is listed
+// between begin and finish, while Firefox answers. This returns the function that turns Firefox's list-tabs
+// reply into items.
+function firefoxTabItems(items) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
-  const registration = loadLib("registration");
-  const home = jxa.home();
-
-  const helperCopy = constants.helperInstallPath(home);
-  const problem = registration.registrationProblem(
-    jxa.readText(constants.registrationPath(home)),
-    helperCopy,
-    jxa.filesEqual(`${WORKFLOW_DIR}/firefox-helper.js`, helperCopy),
-  );
-  if (problem !== null) return { items: [items.setupItem(problem)] };
-
-  // Tests say whether Firefox is running; otherwise ask macOS. Nothing here ever launches Firefox.
-  const running =
-    jxa.channel() !== ""
-      ? jxa.envVar("BSA_TEST_FIREFOX_RUNNING") === "1"
-      : jxa.isRunning(constants.FIREFOX_BUNDLE_ID);
-  if (!running) return { items: [] };
-
-  return { pending: loadLib("firefox-client").start("list-tabs", null) };
-}
-
-function firefoxFinish(begun, items) {
-  if (begun.items !== undefined) return begun.items;
-  const constants = loadLib("constants");
-  const jxa = loadLib("jxa");
-  const reply = loadLib("firefox-client").finish(begun.pending, constants.FIREFOX_TIMEOUT_MS);
-  if (!reply.ok || !Array.isArray(reply.payload)) return [items.firefoxSilentItem()];
-
   const appPath = jxa.appPath(constants.FIREFOX_BUNDLE_ID);
   // An entry that is not an object, or has no numeric id and windowId, is skipped; the rest still show.
   const isTab = (t) => t !== null && typeof t === "object" && Number.isFinite(t.id) && Number.isFinite(t.windowId);
-  return reply.payload.filter(isTab).map((t) =>
-    items.tabItem(
-      { browser: "firefox", browserName: "Firefox", windowId: t.windowId, tabId: t.id, title: t.title || "", url: t.url || "" },
-      appPath,
-    ),
-  );
+  return (payload) =>
+    payload.filter(isTab).map((t) =>
+      items.tabItem(
+        { browser: "firefox", browserName: "Firefox", windowId: t.windowId, tabId: t.id, title: t.title || "", url: t.url || "" },
+        appPath,
+      ),
+    );
 }
 
 // Under BSA_TEST_CHANNEL tests must never send an Apple Event to a real Chrome. Instead the tabs come from the
@@ -138,24 +111,27 @@ function run() {
     const items = loadLib("items");
     const jxa = loadLib("jxa");
 
+    // The Configure Workflow checkboxes: a browser that is switched off is not asked at all.
+    const enabled = loadLib("config").enabledBrowsers(jxa.envVar);
+
     // Send Firefox's request first, list Chrome while Firefox answers, then wait for Firefox.
-    let begun;
+    let begun = { items: [] };
     try {
-      begun = firefoxBegin(items);
+      if (enabled.firefox) begun = loadLib("firefox-source").begin(WORKFLOW_DIR, "list-tabs", null);
     } catch (e) {
       begun = { items: [items.firefoxSilentItem()] };
     }
 
     let chrome = [];
     try {
-      chrome = chromeItems(items);
+      if (enabled.chrome) chrome = chromeItems(items);
     } catch (e) {
       // A Chrome failure must not hide Firefox's tabs; it just contributes no items.
     }
 
     let firefox;
     try {
-      firefox = firefoxFinish(begun, items);
+      firefox = loadLib("firefox-source").finish(begun, firefoxTabItems(items));
     } catch (e) {
       // A Firefox failure must not hide other browsers' tabs; it looks like a request that got no answer.
       firefox = [items.firefoxSilentItem()];

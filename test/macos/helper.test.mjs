@@ -99,7 +99,7 @@ test("frames split across chunks and two frames in one chunk are both read", { s
   const waiting = [];
   await withHelper(
     (message, ff) => {
-      if (message.params && message.params.kind === "split") {
+      if (message.params.query === "split") {
         const bytes = frame({ id: message.id, payload: { text: "split ✓ 日本" } });
         const third = Math.ceil(bytes.length / 3);
         const pieces = [bytes.subarray(0, 2), bytes.subarray(2, third + 3), bytes.subarray(third + 3)];
@@ -108,14 +108,14 @@ test("frames split across chunks and two frames in one chunk are both read", { s
         // Hold the first one until the second arrives, then answer both in a single write.
         waiting.push(message);
         if (waiting.length === 2) {
-          ff.write(Buffer.concat(waiting.map((m) => frame({ id: m.id, payload: m.params.kind }))));
+          ff.write(Buffer.concat(waiting.map((m) => frame({ id: m.id, payload: m.params.query }))));
         }
       }
     },
     async (fx) => {
-      const split = await request(fx, "list-tabs", { kind: "split" });
+      const split = await request(fx, "search-history", { query: "split", maxResults: 1 });
       assert.deepEqual(split.result, { ok: true, payload: { text: "split ✓ 日本" } });
-      const [a, b] = await Promise.all([request(fx, "list-tabs", { kind: "first" }), request(fx, "list-tabs", { kind: "second" })]);
+      const [a, b] = await Promise.all([request(fx, "search-history", { query: "first", maxResults: 1 }), request(fx, "search-history", { query: "second", maxResults: 1 })]);
       assert.deepEqual(a.result, { ok: true, payload: "first" });
       assert.deepEqual(b.result, { ok: true, payload: "second" });
     },
@@ -126,10 +126,10 @@ test("a parameter of 0 reaches Firefox as 0", { skip: !darwin }, async () => {
   await withHelper(
     (message, ff) => ff.send({ id: message.id, payload: null }),
     async (fx, ff) => {
-      await request(fx, "list-tabs", 0);
+      await request(fx, "search-history", { query: "", maxResults: 1, extra: 0 });
       assert.equal(ff.received.length, 1);
-      assert.ok("params" in ff.received[0]);
-      assert.strictEqual(ff.received[0].params, 0);
+      assert.deepEqual(ff.received[0].params, { query: "", maxResults: 1, extra: 0 });
+      assert.strictEqual(ff.received[0].params.extra, 0);
     },
   );
 });
@@ -178,11 +178,11 @@ test("a reply that arrives after the client timed out is swept and leaves nothin
   await withHelper(
     (message, ff) => {
       // "late" is answered after the client has given up; anything else is answered at once.
-      if (message.params && message.params.kind === "late") setTimeout(() => ff.send({ id: message.id, payload: "x".repeat(1000) }), 700);
+      if (message.params && message.params.query === "late") setTimeout(() => ff.send({ id: message.id, payload: "x".repeat(1000) }), 700);
       else ff.send({ id: message.id, payload: "ok" });
     },
     async (fx) => {
-      const { result } = await request(fx, "list-tabs", { kind: "late" }, 200);
+      const { result } = await request(fx, "search-history", { query: "late", maxResults: 1 }, 200);
       assert.deepEqual(result, { ok: false, error: "timeout" });
       assert.deepEqual(readdirSync(fx.privateDir), [], "the client cleaned up its own files");
       // The add-on answers anyway: the helper writes a reply file that nobody will read.
@@ -359,6 +359,59 @@ test("activate-tab without integer tabId and windowId gets invalid params and is
       assert.equal(ff.received.length, 0, "nothing was forwarded to Firefox");
       const { result } = await request(fx, "activate-tab", { tabId: 5, windowId: 1 });
       assert.deepEqual(result, { ok: true, payload: true });
+      assert.equal(ff.received.length, 1);
+    },
+  );
+});
+
+test("list-bookmarks and search-history are forwarded, and list-tabs and list-bookmarks carry params null", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: [message.command] }),
+    async (fx, ff) => {
+      const bookmarks = await request(fx, "list-bookmarks", { x: 1 });
+      assert.deepEqual(bookmarks.result, { ok: true, payload: ["list-bookmarks"] });
+      const history = await request(fx, "search-history", { query: "a b", maxResults: 50 });
+      assert.deepEqual(history.result, { ok: true, payload: ["search-history"] });
+      const tabs = await request(fx, "list-tabs", { y: 2 });
+      assert.deepEqual(tabs.result, { ok: true, payload: ["list-tabs"] });
+      assert.deepEqual(
+        ff.received.map((m) => [m.command, m.params]),
+        [
+          ["list-bookmarks", null],
+          ["search-history", { query: "a b", maxResults: 50 }],
+          ["list-tabs", null],
+        ],
+      );
+    },
+  );
+});
+
+test("search-history with a bad query or maxResults gets invalid params and is not forwarded", { skip: !darwin }, async () => {
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload: [] }),
+    async (fx, ff) => {
+      const bad = [
+        null,
+        "a",
+        {},
+        { query: "a" },
+        { maxResults: 5 },
+        { query: "a", maxResults: 0 },
+        { query: "a", maxResults: 51 },
+        { query: "a", maxResults: "5" },
+        { query: "a", maxResults: 2.5 },
+        { query: 5, maxResults: 5 },
+        { query: null, maxResults: 5 },
+        { query: "x".repeat(513), maxResults: 5 },
+      ];
+      for (const params of bad) {
+        const { result } = await request(fx, "search-history", params);
+        assert.deepEqual(result, { ok: false, error: "invalid params" }, `params ${JSON.stringify(params).slice(0, 60)}`);
+      }
+      assert.equal(ff.received.length, 0, "nothing was forwarded to Firefox");
+      assert.deepEqual(readdirSync(fx.privateDir), [], "no request or reply file is left behind");
+      const edge = await request(fx, "search-history", { query: "x".repeat(512), maxResults: 50 });
+      assert.deepEqual(edge.result, { ok: true, payload: [] });
       assert.equal(ff.received.length, 1);
     },
   );

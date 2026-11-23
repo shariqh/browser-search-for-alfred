@@ -9,7 +9,7 @@ const constants = require("../../workflow/lib/constants.js");
 const manifest = JSON.parse(readFileSync(new URL("../../addon/manifest.json", import.meta.url), "utf8"));
 const backgroundSource = readFileSync(new URL("../../addon/background.js", import.meta.url), "utf8");
 
-function fakeBrowser({ tabs = [], updateFails = false } = {}) {
+function fakeBrowser({ tabs = [], updateFails = false, tree = [], history = [] } = {}) {
   const calls = [];
   return {
     calls,
@@ -24,6 +24,12 @@ function fakeBrowser({ tabs = [], updateFails = false } = {}) {
     },
     windows: {
       update: async (id, props) => { calls.push(["windows.update", id, props]); return {}; },
+    },
+    bookmarks: {
+      getTree: async () => { calls.push(["bookmarks.getTree"]); return tree; },
+    },
+    history: {
+      search: async (q) => { calls.push(["history.search", q]); return history; },
     },
   };
 }
@@ -80,10 +86,11 @@ test("reconnectDelayMs doubles from 1000 and caps at 10000", () => {
 test("manifest.json", () => {
   assert.equal(manifest.manifest_version, 2);
   assert.equal(manifest.name, "Browser Search for Alfred");
-  assert.equal(manifest.version, "0.1.0");
+  assert.equal(manifest.version, "0.2.0");
   assert.equal(manifest.background.persistent, true);
   assert.deepEqual(manifest.background.scripts, ["handler.js", "background.js"]);
-  assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs"]);
+  assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
+  assert.equal(manifest.description, "Lists this browser's tabs, bookmarks and history for Alfred, and brings a tab to the front.");
   assert.equal(manifest.browser_specific_settings.gecko.id, constants.ADDON_ID);
 });
 
@@ -135,4 +142,112 @@ test("list-tabs leaves out tabs in private windows", async () => {
     [1, 3],
   );
   assert.equal(JSON.stringify(r).includes("secret"), false);
+});
+
+test("list-bookmarks returns every openable bookmark, depth first, and ignores params", async () => {
+  const tree = [
+    {
+      id: "root",
+      title: "",
+      type: "folder",
+      children: [
+        {
+          id: "menu",
+          title: "Menu",
+          type: "folder",
+          children: [
+            { id: "1", title: "Example", url: "https://example.com/", type: "bookmark", dateAdded: 5 },
+            { id: "sep", title: "", url: "data:", type: "separator" },
+            {
+              id: "sub",
+              title: "Sub",
+              type: "folder",
+              url: "https://folder.example/",
+              children: [{ id: "2", title: "Local", url: "FILE:///tmp/a.html" }],
+            },
+          ],
+        },
+        { id: "3", title: "Query", url: "place:type=6&sort=14", type: "bookmark" },
+        { id: "4", title: "Script", url: "javascript:alert(1)", type: "bookmark" },
+        { id: "5", title: "Plain", url: "HTTP://plain.example/", type: "bookmark" },
+        { id: "6", title: "No URL", type: "bookmark" },
+      ],
+    },
+  ];
+  const b = fakeBrowser({ tree });
+  const r = await handleRequest(b, { id: "b1", command: "list-bookmarks", params: { x: 1 } });
+  assert.deepEqual(r, {
+    id: "b1",
+    payload: [
+      { title: "Example", url: "https://example.com/" },
+      { title: "Local", url: "FILE:///tmp/a.html" },
+      { title: "Plain", url: "HTTP://plain.example/" },
+    ],
+  });
+  assert.deepEqual(b.calls, [["bookmarks.getTree"]]);
+});
+
+test("list-bookmarks leaves out every URL that is not http, https or file", async () => {
+  const urls = ["place:x", "javascript:alert(1)", "chrome://settings", "data:text/html,hi", "about:blank", "ftp://x/", "https:", "//x"];
+  const tree = [{ id: "r", type: "folder", children: urls.map((url, i) => ({ id: String(i), title: "t", url, type: "bookmark" })) }];
+  const r = await handleRequest(fakeBrowser({ tree }), { id: "b2", command: "list-bookmarks" });
+  assert.deepEqual(r.payload, [{ title: "t", url: "https:" }]);
+});
+
+test("search-history searches everything by the typed words and keeps only openable URLs", async () => {
+  const history = [
+    { id: "1", url: "https://a.example/", title: "A", lastVisitTime: 1700000000000, visitCount: 3 },
+    { id: "2", url: "javascript:1", title: "Bad", lastVisitTime: 5 },
+    { id: "3", url: "file:///tmp/x", title: "Local", lastVisitTime: 4 },
+    { id: "4", url: "about:home", title: "Home", lastVisitTime: 3 },
+  ];
+  const b = fakeBrowser({ history });
+  const r = await handleRequest(b, { id: "h1", command: "search-history", params: { query: "a b", maxResults: 50 } });
+  assert.deepEqual(r, {
+    id: "h1",
+    payload: [
+      { title: "A", url: "https://a.example/", lastVisitTime: 1700000000000 },
+      { title: "Local", url: "file:///tmp/x", lastVisitTime: 4 },
+    ],
+  });
+  assert.deepEqual(b.calls, [["history.search", { text: "a b", startTime: 0, maxResults: 50 }]]);
+});
+
+test("search-history accepts an empty query and the limits 1 and 50, and 512 characters", async () => {
+  for (const params of [
+    { query: "", maxResults: 1 },
+    { query: "x".repeat(512), maxResults: 50 },
+  ]) {
+    const b = fakeBrowser();
+    const r = await handleRequest(b, { id: "h2", command: "search-history", params });
+    assert.deepEqual(r, { id: "h2", payload: [] });
+    assert.equal(b.calls.length, 1);
+  }
+});
+
+test("search-history with bad params returns {id, error: \"invalid params\"} and makes no call", async () => {
+  const bad = [
+    undefined,
+    null,
+    {},
+    { query: "a" },
+    { maxResults: 5 },
+    { query: "a", maxResults: 0 },
+    { query: "a", maxResults: 51 },
+    { query: "a", maxResults: -1 },
+    { query: "a", maxResults: "5" },
+    { query: "a", maxResults: 2.5 },
+    { query: "a", maxResults: NaN },
+    { query: "a", maxResults: null },
+    { query: 5, maxResults: 5 },
+    { query: null, maxResults: 5 },
+    { query: ["a"], maxResults: 5 },
+    { query: "x".repeat(513), maxResults: 5 },
+  ];
+  for (const params of bad) {
+    const b = fakeBrowser();
+    const r = await handleRequest(b, { id: "p", command: "search-history", params });
+    assert.deepEqual(r, { id: "p", error: "invalid params" }, JSON.stringify(params));
+    assert.deepEqual(b.calls, [], "history was not searched");
+  }
 });
