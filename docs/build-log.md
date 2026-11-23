@@ -44,7 +44,7 @@ Shariq updated the workflow on the Air, swapped in the 0.2.0 add-on, ran "Set up
 ## 2026-11-23: milestone 3, more browsers
 
 - Added Safari tabs, Brave and Edge (tabs, bookmarks and history), a checkbox for each of the five browsers, Allow items that explain a missing macOS permission, the Gallery-style README and the icon. Version 0.3.0 for the workflow; the add-on is unchanged at 0.2.0.
-- Fixed on the way: incognito and private windows are now left out of Firefox, Chrome, Brave and Edge tabs.
+- Fixed on the way: incognito windows are now left out of Chrome, Brave and Edge tabs (Firefox's private tabs were already left out).
 - Safari doesn't tell Alfred which windows are private, so whether its private windows are listed stays unknown until the try-out.
 - Brave and Edge are tested only against fixtures, not real browsers, until the try-out.
-- The real-Firefox gate (`npm run check:firefox`) result is recorded by the controller.
+- The real-Firefox check (`npm run check:firefox`) passed (`REAL FIREFOX: PASS`) with every Apple Event browser skipped (`BSA_SKIP_APPLESCRIPT=1`). It covers Firefox tabs only.
