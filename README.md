@@ -6,11 +6,11 @@
 
 ## Usage
 
-Search the tabs open in your running browsers, except private windows, via the `tab` keyword.
+Search the tabs open in your running browsers, except private windows in Firefox, Chrome, Brave and Edge, via the `tab` keyword.
 
 * <kbd>↩</kbd> Bring the tab to the front.
 
-Firefox, Chrome, Brave and Edge never list private or incognito windows. Safari doesn't say which windows are private, so its private tabs are listed.
+Firefox, Chrome, Brave and Edge never list private or incognito windows. Safari doesn't tell Alfred which windows are private, so tabs in its private windows may be listed.
 
 Search your bookmarks via the `bmk` keyword.
 
