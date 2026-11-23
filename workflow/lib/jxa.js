@@ -1,0 +1,176 @@
+(function () {
+  ObjC.import("Foundation");
+  ObjC.import("stdlib");
+
+  const fm = () => $.NSFileManager.defaultManager;
+
+  function envVar(name) {
+    const value = $.NSProcessInfo.processInfo.environment.objectForKey(name);
+    return value.isNil() ? "" : String(ObjC.unwrap(value));
+  }
+
+  // The HOME environment variable, falling back to NSHomeDirectory().
+  function home() {
+    const fromEnv = envVar("HOME");
+    return fromEnv !== "" ? fromEnv : String(ObjC.unwrap($.NSHomeDirectory()));
+  }
+
+  // BSA_TEST_CHANNEL, or "" outside tests.
+  function channel() {
+    return envVar("BSA_TEST_CHANNEL");
+  }
+
+  function readText(path) {
+    const text = $.NSString.stringWithContentsOfFileEncodingError(path, $.NSUTF8StringEncoding, $());
+    return text.isNil() ? null : String(ObjC.unwrap(text));
+  }
+
+  function setMode(path, mode) {
+    const attrs = $.NSDictionary.dictionaryWithObjectForKey($(mode), $.NSFilePosixPermissions);
+    fm().setAttributesOfItemAtPathError(attrs, path, $());
+  }
+
+  // mode is a number such as 0o600. The write is atomic: a reader sees the old file or the whole new one.
+  function writeTextAtomic(path, text, mode) {
+    const ok = $(String(text)).writeToFileAtomicallyEncodingError(path, true, $.NSUTF8StringEncoding, $());
+    if (!ok) throw new Error(`cannot write ${path}`);
+    setMode(path, mode === undefined ? 0o600 : mode);
+  }
+
+  // Creates the folder (and any parents) so that the folder itself is never visible with a looser
+  // mode than `mode`: a umask that removes the other bits is in force while it is created. A folder that
+  // already exists gets its mode set before ensureDir returns.
+  function ensureDir(path, mode) {
+    ObjC.import("sys/stat");
+    const attrs = $.NSDictionary.dictionaryWithObjectForKey($(mode), $.NSFilePosixPermissions);
+    const previous = $.umask(~mode & 0o777);
+    try {
+      fm().createDirectoryAtPathWithIntermediateDirectoriesAttributesError(path, true, attrs, $());
+    } finally {
+      $.umask(previous);
+    }
+    setMode(path, mode);
+  }
+
+  function remove(path) {
+    fm().removeItemAtPathError(path, $());
+  }
+
+  function fileExists(path) {
+    return Boolean(fm().fileExistsAtPath(path));
+  }
+
+  // True when both files exist and hold exactly the same bytes.
+  function filesEqual(pathA, pathB) {
+    const a = $.NSData.dataWithContentsOfFile(pathA);
+    const b = $.NSData.dataWithContentsOfFile(pathB);
+    if (a.isNil() || b.isNil()) return false;
+    return Boolean(a.isEqualToData(b));
+  }
+
+  // Copies the bytes of src over dest atomically (a reader sees the old file or the whole new one),
+  // then sets the mode of dest.
+  function copyFileAtomic(src, dest, mode) {
+    const data = $.NSData.dataWithContentsOfFile(src);
+    if (data.isNil()) throw new Error(`cannot read ${src}`);
+    if (!data.writeToFileAtomically(dest, true)) throw new Error(`cannot write ${dest}`);
+    setMode(dest, mode);
+  }
+
+  // Distributed notifications carry only a name and one string.
+  function postNotification(name, object) {
+    $.NSDistributedNotificationCenter.defaultCenter.postNotificationNameObjectUserInfoDeliverImmediately(
+      name,
+      $(String(object)),
+      $(),
+      true,
+    );
+  }
+
+  // Runs the run loop in 20 ms slices until predicate() is true or the clock reaches deadlineMs
+  // (an absolute time in milliseconds since 1970, like Date.now() + 400). Returns whether predicate held.
+  function waitFor(predicate, deadlineMs) {
+    for (;;) {
+      if (predicate()) return true;
+      if (Date.now() >= deadlineMs) return false;
+      $.NSRunLoop.currentRunLoop.runModeBeforeDate(
+        $.NSDefaultRunLoopMode,
+        $.NSDate.dateWithTimeIntervalSinceNow(0.02),
+      );
+    }
+  }
+
+  function isRunning(bundleId) {
+    ObjC.import("AppKit");
+    return Number($.NSRunningApplication.runningApplicationsWithBundleIdentifier(bundleId).count) > 0;
+  }
+
+  // Under BSA_TEST_CHANNEL, activations are logged instead of performed: one line is appended to
+  // $HOME/activated-apps.log.
+  function logActivation(line) {
+    const log = `${home()}/activated-apps.log`;
+    writeTextAtomic(log, (readText(log) || "") + line + "\n", 0o600);
+  }
+
+  // Brings a running app to the front without Apple Events. Under BSA_TEST_CHANNEL it activates
+  // nothing: it logs the bundle ID (see logActivation) and returns true.
+  function activateApp(bundleId) {
+    if (channel() !== "") {
+      logActivation(bundleId);
+      return true;
+    }
+    ObjC.import("AppKit");
+    const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier(bundleId);
+    if (Number(apps.count) === 0) return false;
+    const options = $.NSApplicationActivateAllWindows | $.NSApplicationActivateIgnoringOtherApps;
+    return Boolean(apps.objectAtIndex(0).activateWithOptions(options));
+  }
+
+  // The bundle ID of the browser the person was last in, or "" when unknown. While Alfred's panel is open,
+  // Alfred itself is the frontmost app, but the menu bar still belongs to the app underneath, so ask for
+  // the menu-bar owner first and fall back to the frontmost app when that is nil or is Alfred. No Apple Events.
+  // Under BSA_TEST_CHANNEL it is BSA_TEST_FRONTMOST, so tests never depend on the real desktop.
+  // The real path has no automated test (R1): the Task 9 try-out checks it by hand, with each browser in front.
+  function frontmostBundleId() {
+    if (channel() !== "") return envVar("BSA_TEST_FRONTMOST");
+    ObjC.import("AppKit");
+    const idOf = (app) => {
+      if (app.isNil()) return "";
+      const id = app.bundleIdentifier;
+      return id.isNil() ? "" : String(ObjC.unwrap(id));
+    };
+    const workspace = $.NSWorkspace.sharedWorkspace;
+    const owner = idOf(workspace.menuBarOwningApplication);
+    if (owner !== "" && owner !== "com.runningwithcrayons.Alfred") return owner;
+    return idOf(workspace.frontmostApplication);
+  }
+
+  // The path of the installed app with that bundle ID, or null.
+  function appPath(bundleId) {
+    ObjC.import("AppKit");
+    const url = $.NSWorkspace.sharedWorkspace.URLForApplicationWithBundleIdentifier(bundleId);
+    return url.isNil() ? null : String(ObjC.unwrap(url.path));
+  }
+
+  const api = {
+    envVar,
+    home,
+    channel,
+    readText,
+    writeTextAtomic,
+    ensureDir,
+    remove,
+    fileExists,
+    filesEqual,
+    copyFileAtomic,
+    postNotification,
+    waitFor,
+    isRunning,
+    logActivation,
+    activateApp,
+    frontmostBundleId,
+    appPath,
+  };
+  if (typeof module === "object" && module && module.exports) module.exports = api;
+  return api;
+})();

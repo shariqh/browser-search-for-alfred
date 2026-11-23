@@ -12,3 +12,13 @@ Notes for the blog post and video. Newest entries at the bottom.
 ## 2026-11-22: name
 
 - Named "Browser Search for Alfred".
+
+## 2026-11-22: real Firefox starts the helper on the MacBook Pro
+
+`npm run check:firefox` printed `REAL FIREFOX: PASS` (macOS 27.3, Firefox 160.0.1, web-ext 10.8.0). The script ran "Set up Firefox" against the real home folder, then used web-ext to start a separate Firefox with a fresh temporary profile (web-ext passes `-no-remote`, so Shariq's own Firefox was never touched), with our add-on loaded as a temporary add-on and `https://example.com/` as the start page. On the first poll that succeeded, `tab.js` returned an item whose subtitle contained `example.com`, and `pgrep` showed Firefox had started `firefox-helper.js` from the installed copy. After the run, web-ext's Firefox and the helper were both gone, and only our own registration file had been added to the NativeMessagingHosts folder. This is the first time a real Firefox, not a stand-in, ran the JXA helper in this project, so the gate is open for the Chrome work.
+
+## 2026-11-23: first try-out on the MacBook Air
+
+Shariq imported the workflow on the Air, ran "Set up Firefox", loaded the add-on as a temporary add-on, and searched his own Firefox and Chrome tabs from Alfred. His report: "works great", with nothing flagged as surprising. This was the first run in his real browsers and from inside Alfred. It was also the only check for three things the tests can't reach: the Chrome time limit against a real Chrome, the last-used browser's tabs coming first while Alfred is open, and bringing a Firefox tab forward from Alfred. His report covers them as a whole rather than step by step.
+
+One snag on the way: the two files were first sent as chat attachments, which he couldn't find on the Air. Copying them straight into the Air's Downloads folder over ssh fixed it. The README's install steps will need to say where people get the files once there's a release.
