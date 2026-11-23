@@ -41,3 +41,7 @@ test("Chrome's data folder, the history limits and Safari's bundle ID", () => {
   assert.equal(c.SQLITE_TIMEOUT_MS, 400);
   assert.equal(c.SAFARI_BUNDLE_ID, "com.apple.Safari");
 });
+
+test("the Apple Event browsers share a 1500 ms budget for tab", () => {
+  assert.equal(c.TABS_BUDGET_MS, 1500);
+});

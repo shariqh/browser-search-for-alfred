@@ -13,6 +13,7 @@ const {
   urlItem,
   urlItems,
   needsAccessItem,
+  automationItem,
   historyProblemItem,
   mergeHistory,
   bookmarksOutput,
@@ -32,7 +33,7 @@ test("tabItem builds the exact item for a normal Firefox tab", () => {
   assert.deepEqual(tabItem(firefoxTab, "/Applications/Firefox.app"), {
     title: "Example Domain",
     subtitle: "Firefox · https://example.com/a-b?q=1",
-    arg: JSON.stringify({ action: "activate", browser: "firefox", windowId: 7, tabId: 42 }),
+    arg: JSON.stringify({ action: "activate", browser: "firefox", windowId: 7, tabId: 42, url: "https://example.com/a-b?q=1" }),
     match: "Example Domain example com a b q 1",
     icon: { type: "fileicon", path: "/Applications/Firefox.app" },
     text: { copy: "https://example.com/a-b?q=1", largetype: "Example Domain" },
@@ -58,7 +59,7 @@ test("quotes, newlines, emoji and right-to-left text survive JSON and the arg", 
   const item = tabItem({ ...firefoxTab, title, url: 'https://example.com/"q"\n😀' }, "/Applications/Firefox.app");
   assert.deepEqual(JSON.parse(JSON.stringify(item)), item);
   assert.equal(item.title, title);
-  assert.deepEqual(JSON.parse(item.arg), { action: "activate", browser: "firefox", windowId: 7, tabId: 42 });
+  assert.deepEqual(JSON.parse(item.arg), { action: "activate", browser: "firefox", windowId: 7, tabId: 42, url: 'https://example.com/"q"\n😀' });
 });
 
 test("setupItem names the problem in plain words", () => {
@@ -202,6 +203,16 @@ test("needsAccessItem points at Full Disk Access and has no uid", () => {
     subtitle: "Press Return to open Full Disk Access in System Settings, then turn on Alfred",
     arg: '{"action":"open-privacy"}',
   });
+});
+
+test("automationItem names the browser, spells out the Automation path and has no uid", () => {
+  assert.deepEqual(automationItem("Safari"), {
+    title: "Allow Alfred to control Safari",
+    subtitle: "Press Return, then turn on Safari under Alfred in Privacy & Security → Automation",
+    arg: '{"action":"open-automation"}',
+  });
+  assert.equal(automationItem("Microsoft Edge").title, "Allow Alfred to control Microsoft Edge");
+  assert.equal("uid" in automationItem("Brave Browser"), false);
 });
 
 test("historyProblemItem says a browser's history took too long, or could not be read; it has no uid and no arg", () => {

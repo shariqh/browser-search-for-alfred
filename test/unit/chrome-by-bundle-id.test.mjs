@@ -2,11 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-// The real Chrome path can't run in tests (R1), so check how the entries name the app.
+// The real Apple Event path can't run in tests (R1), so check how the entries name the app: always by the registry
+// entry's bundle ID (lib/browsers.js), never by a name such as "Google Chrome" or "Safari".
 for (const file of ["tab.js", "act.js"]) {
-  test(`${file} opens Chrome by bundle ID, never by name`, () => {
+  test(`${file} opens every Apple Event browser by bundle ID, never by name`, () => {
     const source = readFileSync(new URL(`../../workflow/${file}`, import.meta.url), "utf8");
-    assert.equal(/Application\(\s*["']Google Chrome["']\s*\)/.test(source), false, "no Application(\"Google Chrome\")");
-    assert.ok(source.includes("Application(constants.CHROME_BUNDLE_ID)"), "Application(constants.CHROME_BUNDLE_ID)");
+    const calls = source.match(/Application\([^)]*\)/g) || [];
+    assert.ok(calls.length > 0, "the entry asks for an Application");
+    assert.deepEqual([...new Set(calls)], ["Application(browser.bundleId)"]);
   });
 }

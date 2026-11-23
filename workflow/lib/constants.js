@@ -52,6 +52,8 @@
     BRAVE_BUNDLE_ID: "com.brave.Browser",
     EDGE_BUNDLE_ID: "com.microsoft.edgemac",
     FIREFOX_TIMEOUT_MS: 400,
+    // tab: Chrome, Safari, Brave and Edge share one deadline this far after the first of them is asked.
+    TABS_BUDGET_MS: 1500,
     // History: each browser returns at most this many rows, and sqlite3 gets this long to answer.
     HISTORY_LIMIT: 50,
     SQLITE_TIMEOUT_MS: 400,

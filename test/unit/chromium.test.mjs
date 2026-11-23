@@ -165,7 +165,13 @@ test("a Chrome tab titled with quotes, a newline, emoji and Hebrew gives an arg 
   const item = tabItem(tab, "/Applications/Google Chrome.app");
   assert.deepEqual(JSON.parse(JSON.stringify(item)), item);
   assert.equal(item.title, title);
-  assert.deepEqual(JSON.parse(item.arg), { action: "activate", browser: "chrome", windowId: "100", tabId: "5" });
+  assert.deepEqual(JSON.parse(item.arg), {
+    action: "activate",
+    browser: "chrome",
+    windowId: "100",
+    tabId: "5",
+    url: 'https://example.com/"q"\n😀',
+  });
 });
 
 // A clock that moves forward by `stepMs` each time it is read, so budgets are deterministic.
