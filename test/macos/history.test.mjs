@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
-import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, statSync } from "node:fs";
+import { chmodSync, cpSync, mkdirSync, mkdtempSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -336,4 +336,43 @@ test("when an exclusive lock stops the read-only read of Safari's history, the i
   } finally {
     await locker.release();
   }
+});
+
+test("a Chrome History sqlite3 cannot read gives one \"Couldn't read\" item first; the rest still shows", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  // Profile 1's History is not a database, so its sqlite3 fails; Default's still answers.
+  writeFileSync(path.join(fx.chromeDir, "Profile 1", "History"), "this is not a database\n".repeat(200));
+  const { output } = await hist(fx, "");
+  assert.equal(output.items[0].title, "Set up Firefox");
+  assert.deepEqual(output.items[1], {
+    title: "Couldn't read Google Chrome's history",
+    subtitle: "Try again in a moment",
+    valid: false,
+  });
+  assert.deepEqual(urls(output).slice(2), [
+    "https://safari.example.com/x",
+    "https://chrome.example.com/50x",
+    "https://safari.example.com/sale",
+    "https://chrome.example.com/its",
+  ]);
+});
+
+test("one \"Couldn't read\" item for Chrome when every profile's History fails", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  for (const profile of ["Default", "Profile 1"]) writeFileSync(path.join(fx.chromeDir, profile, "History"), "not a database\n".repeat(200));
+  const { output } = await hist(fx, "");
+  assert.deepEqual(
+    output.items.map((item) => item.title),
+    ["Set up Firefox", "Couldn't read Google Chrome's history", "it s 50 percent", "Sale: it's 50% today"],
+  );
+});
+
+test("a Safari History.db that neither read can open gives \"Couldn't read Safari's history\" first; Chrome's history still shows", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  writeFileSync(constants.safariHistoryPath(fx.home), "not a database\n".repeat(200));
+  const { output } = await hist(fx, "");
+  assert.deepEqual(
+    output.items.map((item) => item.title),
+    ["Set up Firefox", "Couldn't read Safari's history", "50 its", "Work page", "It's 50% off"],
+  );
 });

@@ -13,6 +13,7 @@ const {
   urlItem,
   urlItems,
   needsAccessItem,
+  historyProblemItem,
   mergeHistory,
   bookmarksOutput,
   historyOutput,
@@ -200,6 +201,19 @@ test("needsAccessItem points at Full Disk Access and has no uid", () => {
     title: "Allow Alfred to read Safari's bookmarks and history",
     subtitle: "Press Return to open Full Disk Access in System Settings, then turn on Alfred",
     arg: '{"action":"open-privacy"}',
+  });
+});
+
+test("historyProblemItem says a browser's history took too long, or could not be read; it has no uid and no arg", () => {
+  assert.deepEqual(historyProblemItem("Google Chrome", "timeout"), {
+    title: "Google Chrome's history took too long",
+    subtitle: "Try again, or type a longer search",
+    valid: false,
+  });
+  assert.deepEqual(historyProblemItem("Safari", "error"), {
+    title: "Couldn't read Safari's history",
+    subtitle: "Try again in a moment",
+    valid: false,
   });
 });
 

@@ -60,6 +60,15 @@
     };
   }
 
+  // Explains missing results when a browser's history query ran out of time ("timeout") or failed ("error"). It
+  // cannot be chosen.
+  function historyProblemItem(browserName, reason) {
+    if (reason === "timeout") {
+      return { title: `${browserName}'s history took too long`, subtitle: "Try again, or type a longer search", valid: false };
+    }
+    return { title: `Couldn't read ${browserName}'s history`, subtitle: "Try again in a moment", valid: false };
+  }
+
   // lists = one array of entries per browser. Each is cut to its newest `limit`, then all are merged newest first.
   // Array.prototype.sort is stable, so entries with the same time keep their list order.
   function mergeHistory(lists, limit) {
@@ -123,6 +132,7 @@
     urlItem,
     urlItems,
     needsAccessItem,
+    historyProblemItem,
     mergeHistory,
     bookmarksOutput,
     historyOutput,

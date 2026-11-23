@@ -80,14 +80,19 @@ function startChrome(query) {
   };
 }
 
-// Chrome's entries from the queries startChrome started. A query that failed or timed out gives nothing.
+// Chrome's entries from the queries startChrome started: {entries, problem}. A query that failed or timed out gives
+// nothing, and problem is the reason of the first one that did ("timeout" or "error"), else null.
 function finishChrome(queries, deadlineMs) {
   const files = loadLib("chromium-files");
   const sqlite = loadLib("sqlite");
   const entries = [];
+  let problem = null;
   for (const query of queries) {
     const result = sqlite.finish(query.handle, deadlineMs);
-    if (!result.ok) continue;
+    if (!result.ok) {
+      if (problem === null) problem = result.reason;
+      continue;
+    }
     for (const row of result.rows) {
       entries.push({
         browser: "chrome",
@@ -99,7 +104,7 @@ function finishChrome(queries, deadlineMs) {
       });
     }
   }
-  return entries;
+  return { entries, problem };
 }
 
 // Starts sqlite3 on Safari's History.db once macOS says it can be read. {denied: true}, {handle: null} when the
@@ -116,16 +121,17 @@ function startSafari(query) {
   return { handle: loadLib("sqlite").start(path, sql, "ro"), path, sql };
 }
 
-// Safari's entries from the query startSafari started. When that read fails (an exclusive lock on History.db, say),
-// the immutable read is tried once, within the same deadline; a timeout is not retried. A failure gives nothing.
+// Safari's entries from the query startSafari started: {entries, problem}. When that read fails (an exclusive lock on
+// History.db, say), the immutable read is tried once, within the same deadline; a timeout is not retried. A failure
+// gives no entries, and problem is its reason ("timeout" or "error"), else null.
 function finishSafari(safari, deadlineMs) {
-  if (safari.handle === null) return [];
+  if (safari.handle === null) return { entries: [], problem: null };
   const sqlite = loadLib("sqlite");
   let result = sqlite.finish(safari.handle, deadlineMs);
   if (!result.ok && result.reason === "error") result = sqlite.finish(sqlite.start(safari.path, safari.sql), deadlineMs);
-  if (!result.ok) return [];
+  if (!result.ok) return { entries: [], problem: result.reason };
   const files = loadLib("safari-files");
-  return result.rows.map((row) => ({
+  const entries = result.rows.map((row) => ({
     browser: "safari",
     browserName: "Safari",
     profile: null,
@@ -133,6 +139,7 @@ function finishSafari(safari, deadlineMs) {
     url: row.url,
     lastVisitMs: files.safariTimeToMs(row.t),
   }));
+  return { entries, problem: null };
 }
 
 // Alfred needs exactly one JSON document on stdout whatever happens, so nothing may escape run().
@@ -166,7 +173,7 @@ function run(argv) {
     // The Configure Workflow checkboxes: a browser that is switched off is not read at all.
     const enabled = loadLib("config").enabledBrowsers(jxa.envVar);
 
-    // Setup, "not answering" and Allow items, which come before the results.
+    // Setup, "not answering", Allow and history-problem items, which come before the results.
     const notices = { firefox: [], chrome: [], safari: [] };
     const lists = { firefox: [], chrome: [], safari: [] };
 
@@ -195,13 +202,23 @@ function run(argv) {
     } catch (e) {}
 
     try {
-      if (chrome.denied) notices.chrome = [items.needsAccessItem("Google Chrome")];
-      else lists.chrome = finishChrome(chrome.queries, deadlineMs);
+      if (chrome.denied) {
+        notices.chrome = [items.needsAccessItem("Google Chrome")];
+      } else {
+        const finished = finishChrome(chrome.queries, deadlineMs);
+        lists.chrome = finished.entries;
+        if (finished.problem) notices.chrome = [items.historyProblemItem("Google Chrome", finished.problem)];
+      }
     } catch (e) {}
 
     try {
-      if (safari.denied) notices.safari = [items.needsAccessItem("Safari")];
-      else lists.safari = finishSafari(safari, deadlineMs);
+      if (safari.denied) {
+        notices.safari = [items.needsAccessItem("Safari")];
+      } else {
+        const finished = finishSafari(safari, deadlineMs);
+        lists.safari = finished.entries;
+        if (finished.problem) notices.safari = [items.historyProblemItem("Safari", finished.problem)];
+      }
     } catch (e) {}
 
     // Firefox has its own timeout, counted from when its request was sent. The reply becomes entries here, and
