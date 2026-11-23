@@ -1,5 +1,7 @@
 // A tiny JXA driver for the tests: loads firefox-client.js and prints the result of one request.
 // Usage: osascript -l JavaScript client-driver.js <workflow dir> request <command> <params JSON> <timeout ms>
+//        osascript -l JavaScript client-driver.js <workflow dir> split <command> <params JSON> <timeout ms> <delay ms>
+//          (start, wait delay ms, then finish: the reply may land before finish() is called)
 //        osascript -l JavaScript client-driver.js <workflow dir> post <notification name> <object>
 ObjC.import("Foundation");
 
@@ -24,6 +26,13 @@ function run(argv) {
   }
   const client = loadLib("firefox-client");
   const started = Date.now();
+  if (argv[1] === "split") {
+    const pending = client.start(argv[2], JSON.parse(argv[3]));
+    loadLib("jxa").waitFor(() => false, Date.now() + Number(argv[5]));
+    const result = client.finish(pending, Number(argv[4]));
+    print(JSON.stringify({ result, elapsedMs: Date.now() - started }));
+    return;
+  }
   const result = client.request(argv[2], JSON.parse(argv[3]), Number(argv[4]));
   print(JSON.stringify({ result, elapsedMs: Date.now() - started }));
 }

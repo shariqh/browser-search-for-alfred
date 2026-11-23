@@ -37,6 +37,11 @@ async function request(fx, command, params, timeoutMs = 3000) {
   return JSON.parse(out);
 }
 
+async function split(fx, command, params, timeoutMs, delayMs) {
+  const out = await osascript(fx, ["split", command, JSON.stringify(params), String(timeoutMs), String(delayMs)]);
+  return JSON.parse(out);
+}
+
 function listAll(dir, prefix = "") {
   const found = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -287,4 +292,25 @@ test("a private folder that already exists with another mode is made 700 before 
   } finally {
     await firefox.stop();
   }
+});
+
+test("start then finish: a reply that lands before finish() is called is still read", { skip: !darwin }, async () => {
+  const payload = [{ id: 1, windowId: 2, title: "Early", url: "https://example.com/" }];
+  await withHelper(
+    (message, ff) => ff.send({ id: message.id, payload }),
+    async (fx) => {
+      // The wait budget (400 ms) is over long before finish() runs (after 900 ms): the reply file is the truth.
+      const { result } = await split(fx, "list-tabs", {}, 400, 900);
+      assert.deepEqual(result, { ok: true, payload });
+      assert.deepEqual(readdirSync(fx.privateDir), [], "no request or reply file is left behind");
+    },
+  );
+});
+
+test("start then finish with no helper times out within the budget counted from start()", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const { result, elapsedMs } = await split(fx, "list-tabs", {}, 400, 200);
+  assert.deepEqual(result, { ok: false, error: "timeout" });
+  assert.ok(elapsedMs < 600, `took ${elapsedMs} ms`);
+  assert.deepEqual(readdirSync(fx.privateDir), []);
 });
