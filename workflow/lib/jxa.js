@@ -126,15 +126,23 @@
     return Boolean(apps.objectAtIndex(0).activateWithOptions(options));
   }
 
-  // The bundle ID of the frontmost app (Alfred itself while its panel is open), or "" when unknown.
-  // No Apple Events. Under BSA_TEST_CHANNEL it is BSA_TEST_FRONTMOST, so tests never depend on the real desktop.
+  // The bundle ID of the browser the person was last in, or "" when unknown. While Alfred's panel is open,
+  // Alfred itself is the frontmost app, but the menu bar still belongs to the app underneath, so ask for
+  // the menu-bar owner first and fall back to the frontmost app when that is nil or is Alfred. No Apple Events.
+  // Under BSA_TEST_CHANNEL it is BSA_TEST_FRONTMOST, so tests never depend on the real desktop.
+  // The real path has no automated test (R1): the Task 9 try-out checks it by hand, with each browser in front.
   function frontmostBundleId() {
     if (channel() !== "") return envVar("BSA_TEST_FRONTMOST");
     ObjC.import("AppKit");
-    const app = $.NSWorkspace.sharedWorkspace.frontmostApplication;
-    if (app.isNil()) return "";
-    const id = app.bundleIdentifier;
-    return id.isNil() ? "" : String(ObjC.unwrap(id));
+    const idOf = (app) => {
+      if (app.isNil()) return "";
+      const id = app.bundleIdentifier;
+      return id.isNil() ? "" : String(ObjC.unwrap(id));
+    };
+    const workspace = $.NSWorkspace.sharedWorkspace;
+    const owner = idOf(workspace.menuBarOwningApplication);
+    if (owner !== "" && owner !== "com.runningwithcrayons.Alfred") return owner;
+    return idOf(workspace.frontmostApplication);
   }
 
   // The path of the installed app with that bundle ID, or null.
