@@ -34,7 +34,7 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.1.0");
+  assert.equal(p.version, "0.2.0");
 });
 
 const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
@@ -124,7 +124,22 @@ test("Configure Workflow has three keyword fields and three browser checkboxes",
 test("workflow zip has the workflow at its root and an executable helper", { skip: !darwin }, () => {
   const lines = zipList(workflowZip);
   const names = lines.map((l) => l.trim().split(/\s+/).pop());
-  for (const n of ["info.plist", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", "lib/constants.js"]) {
+  const libs = [
+    "chromium-files",
+    "chromium",
+    "config",
+    "constants",
+    "firefox-client",
+    "firefox-source",
+    "items",
+    "jxa",
+    "registration",
+    "safari-files",
+    "sql",
+    "sqlite",
+  ];
+  const expected = ["info.plist", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
+  for (const n of expected) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("workflow/")));
@@ -136,4 +151,7 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   const names = zipList(addonZip).map((l) => l.trim().split(/\s+/).pop());
   assert.ok(names.includes("manifest.json"));
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("addon/")));
+  const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
+  assert.equal(manifest.version, "0.2.0");
+  assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
 });

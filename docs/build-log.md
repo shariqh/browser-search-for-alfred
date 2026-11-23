@@ -22,3 +22,9 @@ Notes for the blog post and video. Newest entries at the bottom.
 Shariq imported the workflow on the Air, ran "Set up Firefox", loaded the add-on as a temporary add-on, and searched his own Firefox and Chrome tabs from Alfred. His report: "works great", with nothing flagged as surprising. This was the first run in his real browsers and from inside Alfred. It was also the only check for three things the tests can't reach: the Chrome time limit against a real Chrome, the last-used browser's tabs coming first while Alfred is open, and bringing a Firefox tab forward from Alfred. His report covers them as a whole rather than step by step.
 
 One snag on the way: the two files were first sent as chat attachments, which he couldn't find on the Air. Copying them straight into the Air's Downloads folder over ssh fixed it. The README's install steps will need to say where people get the files once there's a release.
+
+## 2026-11-23: milestone 2, bookmarks and history
+
+- Added `bmk` and `hist` for Firefox (through the add-on), Chrome (its files) and Safari (its files), a checkbox per browser and a keyword field per search, and Return / Command-Return actions. Version 0.2.0 for both the workflow and the add-on.
+- Safari's and Chrome's data are protected by macOS: Safari's needs Full Disk Access for Alfred, and Chrome's may need it or the "access data from other apps" question. The workflow shows one "Allow Alfred to read ..." result when it is denied.
+- The real-Firefox check for the new add-on and helper is run by the coordinator and is not recorded here yet.

@@ -69,7 +69,7 @@
 	<key>createdby</key>
 	<string>Shariq Hirani</string>
 	<key>description</key>
-	<string>Search open tabs in Firefox and Chrome.</string>
+	<string>Search open tabs, bookmarks and history in Firefox, Chrome and Safari.</string>
 	<key>disabled</key>
 	<false/>
 	<key>name</key>
@@ -248,7 +248,7 @@
 		</dict>
 	</array>
 	<key>readme</key>
-	<string>Type tab to search open tabs in Firefox and Chrome. Press Return to switch to a tab.</string>
+	<string>Type tab to search open tabs in Firefox and Chrome, bmk for bookmarks and hist for history in Firefox, Chrome and Safari. Press Return to switch to a tab, or to open a bookmark or history result in the browser it came from. Press Command-Return to open it in your default browser.</string>
 	<key>uidata</key>
 	<dict>
 		<key>073BBDBA-2E7E-40A2-B550-706A1E1E9397</key>
@@ -406,7 +406,7 @@
 	<key>variablesdontexport</key>
 	<array/>
 	<key>version</key>
-	<string>0.1.0</string>
+	<string>0.2.0</string>
 	<key>webaddress</key>
 	<string>https://github.com/shariqh/browser-search-for-alfred</string>
 </dict>
