@@ -49,7 +49,9 @@ function firefoxTabItems(items) {
 // interface its library (chromium.js or safari-tabs.js) reads. Without a file the browser counts as not running.
 // A denied file makes every read fail with -1743, as a refused Automation does. A test-only delayMs makes every
 // read take that long, but never longer than the per-call timeout it was given: a read that would wait longer
-// fails with -1712 after the timeout, like a browser that does not answer.
+// fails with -1712 after the timeout, like a browser that does not answer. Every read appends
+// "<key> <granted timeout seconds>" (or "<key> none" for a read with no modifier) to $HOME/ae-calls.log, so tests can
+// add up the time the shared budget granted without depending on the machine's speed.
 function testBrowserApp(jxa, browser) {
   const file = jxa.envVar(`BSA_TEST_TABS_${browser.key.toUpperCase()}`);
   const text = file === "" ? null : jxa.readText(file);
@@ -60,7 +62,10 @@ function testBrowserApp(jxa, browser) {
     error.errorNumber = errorNumber;
     throw error;
   };
+  const callLog = `${jxa.home()}/ae-calls.log`;
   const read = (pick) => (modifiers) => {
+    const granted = modifiers && modifiers.timeout !== undefined ? String(modifiers.timeout) : "none";
+    jxa.writeTextAtomic(callLog, (jxa.readText(callLog) || "") + `${browser.key} ${granted}\n`, 0o600);
     if (doc.denied === true) fail("Not authorized to send Apple events", -1743);
     const delayMs = Number(doc.delayMs) || 0;
     const limitMs = modifiers && modifiers.timeout !== undefined ? modifiers.timeout * 1000 : Infinity;
@@ -85,9 +90,10 @@ function testBrowserApp(jxa, browser) {
 
 // One Apple Event browser's items: its tabs, [automationItem] when macOS refused Automation of it, or [] when it is
 // not running. A browser is only ever touched (an Apple Event, and possibly an Automation prompt) after macOS has
-// said it is running, and it is never launched. deadlineMs is the deadline every Apple Event browser shares.
-function appleEventItems(items, browser, deadlineMs) {
-  const jxa = loadLib("jxa");
+// said it is running, and it is never launched. deadlineMs is the deadline every Apple Event browser shares. libs =
+// {jxa, chromium, safariTabs}, loaded before the deadline was taken so that loading them does not use the budget.
+function appleEventItems(items, libs, browser, deadlineMs) {
+  const jxa = libs.jxa;
   let app = null;
   if (jxa.channel() !== "") {
     app = testBrowserApp(jxa, browser);
@@ -101,8 +107,8 @@ function appleEventItems(items, browser, deadlineMs) {
   const options = { deadlineMs };
   const result =
     browser.family === "safari"
-      ? loadLib("safari-tabs").listTabs(app, options)
-      : loadLib("chromium").listTabs(app, browser, options);
+      ? libs.safariTabs.listTabs(app, options)
+      : libs.chromium.listTabs(app, browser, options);
   if (result.denied) return [items.automationItem(browser.name)];
   const appPath = jxa.appPath(browser.bundleId);
   return result.tabs.map((tab) => items.tabItem(tab, appPath));
@@ -143,8 +149,10 @@ function run() {
 
     // Chrome, Safari, Brave and Edge, in the registry's order, each only when ticked. They share one deadline,
     // so a browser that hangs cannot hold tab for longer than the budget. The real-Firefox gate sets
-    // BSA_SKIP_APPLESCRIPT so that it never sends an Apple Event to a real browser.
+    // BSA_SKIP_APPLESCRIPT so that it never sends an Apple Event to a real browser. The libraries are loaded
+    // before the deadline is taken, so loading them does not use the budget.
     const registry = loadLib("browsers");
+    const libs = { jxa, chromium: loadLib("chromium"), safariTabs: loadLib("safari-tabs") };
     const skipAppleEvents = jxa.envVar("BSA_SKIP_APPLESCRIPT") === "1";
     const deadlineMs = Date.now() + constants.TABS_BUDGET_MS;
     const found = {};
@@ -153,7 +161,7 @@ function run() {
       found[browser.key] = [];
       if (skipAppleEvents || !enabled[browser.key]) continue;
       try {
-        found[browser.key] = appleEventItems(items, browser, deadlineMs);
+        found[browser.key] = appleEventItems(items, libs, browser, deadlineMs);
       } catch (e) {
         // One browser's failure must not hide the others' tabs; it just contributes no items.
       }

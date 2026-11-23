@@ -238,12 +238,39 @@ test("a broken tabs file for one browser hides only that browser", { skip: !darw
 
 // Review Focus 3. A fake read with delayMs waits that long, but never past the per-call timeout it was given;
 // a read that would wait longer fails with -1712 after the timeout, like a real browser that does not answer.
-test("a hung Chrome costs at most the shared budget, and the browsers after it still show", { skip: !darwin }, async () => {
+test("a hung Chrome gives no tabs, and Safari, Brave and Edge after it still show", { skip: !darwin }, async () => {
   const fx = fixture();
   await setupFirefox(fx);
   const { output, elapsedMs } = await tab(fx, tabsEnv(fx, { CHROME: { ...DATA.CHROME, delayMs: 60000 } }));
   assert.deepEqual(titles(output), ["Safari One", "Safari Two", "Brave One", "Edge One"]);
-  assert.ok(elapsedMs < constants.TABS_BUDGET_MS + 1000, `took ${elapsedMs} ms`);
+  // A loose safety net only; the granted-time test below is the load-independent check.
+  assert.ok(elapsedMs < 10000, `took ${elapsedMs} ms`);
+});
+
+// The fakes log "<key> <granted seconds>" for every Apple Event read to $HOME/ae-calls.log.
+function aeCalls(fx) {
+  return readFileSync(path.join(fx.home, "ae-calls.log"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const [key, granted] = line.split(" ");
+      return { key, granted };
+    });
+}
+
+test("hung Chrome and Safari together are granted at most the budget plus one second, and Brave after them is skipped", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await setupFirefox(fx);
+  const hung = (key) => ({ ...DATA[key], delayMs: 60000 });
+  const { output } = await tab(fx, tabsEnv(fx, { CHROME: hung("CHROME"), SAFARI: hung("SAFARI"), EDGE: null }));
+  const calls = aeCalls(fx);
+  assert.ok(calls.some((c) => c.key === "chrome"), "Chrome was asked");
+  assert.ok(calls.some((c) => c.key === "safari"), "Safari was asked");
+  assert.deepEqual(calls.filter((c) => c.granted === "none"), [], "every read carried a timeout");
+  const grantedSeconds = calls.reduce((sum, c) => sum + Number(c.granted), 0);
+  assert.ok(grantedSeconds <= constants.TABS_BUDGET_MS / 1000 + 1, `granted ${grantedSeconds} s`);
+  assert.deepEqual(calls.filter((c) => c.key === "brave"), [], "Brave was skipped, not asked");
+  assert.deepEqual(output, { skipknowledge: true, items: [] });
 });
 
 test("a slow Chrome that spends the shared budget makes the browsers after it be skipped, not waited on", { skip: !darwin }, async () => {
