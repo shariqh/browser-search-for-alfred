@@ -19,9 +19,9 @@ export function frame(message) {
 
 // handler(message, firefox) is called for every request the helper forwards.
 // firefox.send(message) writes one framed reply; firefox.write(buffer) writes raw bytes.
-export function startFakeFirefox({ home, channel, handler, addonId = "browser-search-for-alfred@shariqh.github.io" }) {
+export function startFakeFirefox({ home, channel, handler, env = {}, addonId = "browser-search-for-alfred@shariqh.github.io" }) {
   const child = spawn(helperPath, [path.join(home, "manifest.json"), addonId], {
-    env: { ...process.env, HOME: home, BSA_TEST_CHANNEL: channel },
+    env: { ...process.env, HOME: home, BSA_TEST_CHANNEL: channel, ...env },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const received = [];

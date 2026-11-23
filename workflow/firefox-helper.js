@@ -30,6 +30,11 @@ const HOME = envVar("HOME") !== "" ? envVar("HOME") : String(ObjC.unwrap($.NSHom
 const CHANNEL = envVar("BSA_TEST_CHANNEL");
 const PRIVATE_DIR = `${HOME}/Library/Caches/${BUNDLE_ID}/firefox`;
 
+// Request and reply files older than this are leftovers (a client that timed out or was killed, a late
+// reply) and are swept. Tests may shorten it with BSA_TEST_STALE_MS, honoured only under BSA_TEST_CHANNEL.
+const STALE_MS = CHANNEL !== "" && Number(envVar("BSA_TEST_STALE_MS")) > 0 ? Number(envVar("BSA_TEST_STALE_MS")) : 60000;
+const LEFTOVER_PATTERN = /^[A-Za-z0-9-]{1,64}\.(request|reply)\.json$/;
+
 function notificationName(base) {
   return CHANNEL !== "" ? `${base}.test.${CHANNEL}` : base;
 }
@@ -62,13 +67,35 @@ function removeFile(path) {
   fileManager.removeItemAtPathError(path, $());
 }
 
+// Deletes leftover request and reply files older than STALE_MS, and forgets requests that old.
+// Called at start and on every request, so a late reply never stays for long.
+function sweep() {
+  const now = Date.now();
+  for (const id of Object.keys(pending)) {
+    if (now - pending[id] > STALE_MS) delete pending[id];
+  }
+  const names = fileManager.contentsOfDirectoryAtPathError(PRIVATE_DIR, $());
+  if (names.isNil()) return;
+  const count = Number(names.count);
+  for (let i = 0; i < count; i++) {
+    const name = String(ObjC.unwrap(names.objectAtIndex(i)));
+    if (!LEFTOVER_PATTERN.test(name)) continue;
+    const path = `${PRIVATE_DIR}/${name}`;
+    const attrs = fileManager.attributesOfItemAtPathError(path, $());
+    if (attrs.isNil()) continue;
+    const modified = attrs.objectForKey($.NSFileModificationDate);
+    if (modified.isNil()) continue;
+    if (now - Number(modified.timeIntervalSince1970) * 1000 > STALE_MS) removeFile(path);
+  }
+}
+
 // ---- Firefox side: framed messages on stdin and stdout --------------------------------------
 
 const stdin = $.NSFileHandle.fileHandleWithStandardInput;
 const stdout = $.NSFileHandle.fileHandleWithStandardOutput;
 let inbox = $.NSMutableData.data;
 
-// Ids of requests forwarded to Firefox that have not been answered yet.
+// Ids of requests forwarded to Firefox that have not been answered yet, with the time each was forwarded.
 const pending = {};
 
 function latin1(str) {
@@ -126,6 +153,7 @@ function drainInbox() {
 
 function handleRequestNotification(id) {
   if (typeof id !== "string" || !ID_PATTERN.test(id)) return;
+  sweep();
   const requestFile = `${PRIVATE_DIR}/${id}.request.json`;
   const text = readText(requestFile);
   if (text === null) return;
@@ -137,7 +165,7 @@ function handleRequestNotification(id) {
     return;
   }
   if (request === null || typeof request !== "object" || typeof request.command !== "string") return;
-  pending[id] = true;
+  pending[id] = Date.now();
   // params is forwarded exactly as received: 0, false and "" are real values.
   sendToFirefox({ id, command: request.command, params: request.params });
 }
@@ -191,6 +219,7 @@ stdin.readInBackgroundAndNotify;
 
 // The folder comes last: once it exists, the observers above are registered.
 ensurePrivateDir();
+sweep();
 
 for (;;) {
   $.NSRunLoop.currentRunLoop.runModeBeforeDate($.NSDefaultRunLoopMode, $.NSDate.distantFuture);
