@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtempSync, mkdirSync, readdirSync, statSync, writeFileSync, utimesSync, existsSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, statSync, writeFileSync, utimesSync, chmodSync, existsSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -235,6 +235,20 @@ test("the helper exits 0 when stdin closes", { skip: !darwin }, async () => {
   }
 });
 
+// Busy-polls from this process while a child creates the folder, and returns the mode seen the first
+// time the folder exists. The child runs on its own, so blocking this thread does not slow it down.
+function firstSeenMode(dir, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      return statSync(dir).mode & 0o777;
+    } catch (e) {
+      // not there yet
+    }
+  }
+  return null;
+}
+
 test("the private folder is created with mode 700", { skip: !darwin }, async () => {
   await withHelper(
     () => {},
@@ -246,4 +260,31 @@ test("the private folder is created with mode 700", { skip: !darwin }, async () 
   const fx = fixture();
   await request(fx, "list-tabs", {}, 100);
   assert.equal(statSync(fx.privateDir).mode & 0o777, 0o700);
+});
+
+test("the private folder is never visible with another mode, from the helper or the client", { skip: !darwin }, async () => {
+  const helperFx = fixture();
+  const firefox = startFakeFirefox({ home: helperFx.home, channel: helperFx.channel, handler: () => {} });
+  try {
+    assert.equal(firstSeenMode(helperFx.privateDir), 0o700, "helper: mode when first visible");
+  } finally {
+    await firefox.stop();
+  }
+  const clientFx = fixture();
+  const pending = request(clientFx, "list-tabs", {}, 300);
+  assert.equal(firstSeenMode(clientFx.privateDir), 0o700, "client: mode when first visible");
+  await pending;
+});
+
+test("a private folder that already exists with another mode is made 700 before the helper is ready", { skip: !darwin }, async () => {
+  const fx = fixture();
+  mkdirSync(fx.privateDir, { recursive: true });
+  chmodSync(fx.privateDir, 0o755);
+  const firefox = startFakeFirefox({ home: fx.home, channel: fx.channel, handler: () => {} });
+  try {
+    await firefox.ready(fx.privateDir);
+    assert.equal(statSync(fx.privateDir).mode & 0o777, 0o700);
+  } finally {
+    await firefox.stop();
+  }
 });

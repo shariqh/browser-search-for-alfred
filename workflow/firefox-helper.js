@@ -11,6 +11,7 @@
 
 ObjC.import("Foundation");
 ObjC.import("stdlib");
+ObjC.import("sys/stat");
 
 // These duplicate workflow/lib/constants.js (a test compares them). Keep them plain string literals.
 const BUNDLE_ID = "io.github.shariqh.browser-search-for-alfred";
@@ -46,9 +47,16 @@ function setMode(path, mode) {
   fileManager.setAttributesOfItemAtPathError(attrs, path, $());
 }
 
+// The folder is never visible with a mode other than 700: a umask that removes the group and other
+// bits is in force while it is created, and a folder that already exists is chmodded before we go on.
 function ensurePrivateDir() {
   const attrs = $.NSDictionary.dictionaryWithObjectForKey($(0o700), $.NSFilePosixPermissions);
-  fileManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(PRIVATE_DIR, true, attrs, $());
+  const previous = $.umask(0o077);
+  try {
+    fileManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(PRIVATE_DIR, true, attrs, $());
+  } finally {
+    $.umask(previous);
+  }
   setMode(PRIVATE_DIR, 0o700);
 }
 

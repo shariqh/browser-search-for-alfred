@@ -37,10 +37,18 @@
     setMode(path, mode === undefined ? 0o600 : mode);
   }
 
-  // Creates the folder (and any parents) and sets the mode of the folder itself.
+  // Creates the folder (and any parents) so that the folder itself is never visible with a looser
+  // mode than `mode`: a umask that removes the other bits is in force while it is created. A folder that
+  // already exists gets its mode set before ensureDir returns.
   function ensureDir(path, mode) {
+    ObjC.import("sys/stat");
     const attrs = $.NSDictionary.dictionaryWithObjectForKey($(mode), $.NSFilePosixPermissions);
-    fm().createDirectoryAtPathWithIntermediateDirectoriesAttributesError(path, true, attrs, $());
+    const previous = $.umask(~mode & 0o777);
+    try {
+      fm().createDirectoryAtPathWithIntermediateDirectoriesAttributesError(path, true, attrs, $());
+    } finally {
+      $.umask(previous);
+    }
     setMode(path, mode);
   }
 

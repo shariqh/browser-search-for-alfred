@@ -2,7 +2,7 @@
 // with a manifest path and the add-on ID as arguments), reads the helper's framed requests, and
 // answers them with whatever the test's handler decides.
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -15,6 +15,14 @@ export function frame(message) {
   const header = Buffer.alloc(4);
   header.writeUInt32LE(body.length, 0);
   return Buffer.concat([header, body]);
+}
+
+function isPrivateDir(dir) {
+  try {
+    return (statSync(dir).mode & 0o777) === 0o700;
+  } catch (e) {
+    return false;
+  }
 }
 
 // handler(message, firefox) is called for every request the helper forwards.
@@ -40,10 +48,11 @@ export function startFakeFirefox({ home, channel, handler, env = {}, addonId = "
     send: (message) => child.stdin.write(frame(message)),
     write: (buffer) => child.stdin.write(buffer),
     closeStdin: () => child.stdin.end(),
-    // The helper creates its private folder after it registers its observers.
+    // The helper makes its private folder (mode 700) after it registers its observers, so a folder
+    // that exists with mode 700 means the helper is ready.
     async ready(privateDir, timeoutMs = 5000) {
       const deadline = Date.now() + timeoutMs;
-      while (!existsSync(privateDir)) {
+      while (!isPrivateDir(privateDir)) {
         if (Date.now() > deadline) throw new Error(`helper not ready; stderr: ${stderr}`);
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
