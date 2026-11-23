@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -142,13 +143,24 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
     "sql",
     "sqlite",
   ];
-  const expected = ["info.plist", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
+  const expected = ["info.plist", "icon.png", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
   for (const n of expected) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("workflow/")));
   const helper = lines.find((l) => l.trim().endsWith(" firefox-helper.js"));
   assert.ok(helper.startsWith("-rwxr-xr-x"), helper);
+});
+
+test("workflow zip has a 512x512 icon.png with an alpha channel", { skip: !darwin }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "bsa-icon-"));
+  execFileSync("/usr/bin/unzip", ["-q", workflowZip, "icon.png", "-d", dir]);
+  const out = execFileSync("/usr/bin/sips", ["-g", "pixelWidth", "-g", "pixelHeight", "-g", "hasAlpha", path.join(dir, "icon.png")], {
+    encoding: "utf8",
+  });
+  assert.match(out, /pixelWidth: 512\n/);
+  assert.match(out, /pixelHeight: 512\n/);
+  assert.match(out, /hasAlpha: yes\n/);
 });
 
 test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
