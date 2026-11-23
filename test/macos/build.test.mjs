@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -158,4 +158,21 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
   assert.equal(manifest.version, "0.2.0");
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
+});
+
+test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+  const marker = "\n<!-- developer -->\n";
+  const at = readme.indexOf(marker);
+  assert.ok(at > 0, "README.md has a <!-- developer --> line of its own");
+  // The user part runs from the top up to the marker line, exclusive. Both sides are compared with trailing
+  // whitespace and line ends trimmed, so the blank line before the marker and the plist's closing newline don't matter.
+  const userPart = readme.slice(0, at).trimEnd();
+  assert.equal(plistJson().readme.trimEnd(), userPart);
+  assert.ok(userPart.startsWith("## Setup\n"), "starts with ## Setup");
+  const setup = userPart.indexOf("\n## Setup\n");
+  const usage = userPart.indexOf("\n## Usage\n");
+  assert.ok(usage > 0, "has ## Usage");
+  assert.equal(setup, -1, "## Setup appears once, at the top");
+  assert.ok(!userPart.includes("<!--"), "no HTML comments in the user part");
 });
