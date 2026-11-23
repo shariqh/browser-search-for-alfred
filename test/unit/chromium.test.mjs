@@ -7,15 +7,24 @@ const { listTabs, activateTab } = require("../../workflow/lib/chromium.js");
 const { tabItem } = require("../../workflow/lib/items.js");
 
 // A stand-in shaped like JXA's Application("Google Chrome"). `data` is [{id, tabs: [{id, title, url}]}].
-function fakeChrome(data, { running = true } = {}) {
+// Every read and command records the arguments it receives in `args`, keyed by name. `failOn` names a call
+// (for example "tabs.title") that throws the way a timed-out Apple Event does.
+function fakeChrome(data, { running = true, failOn = null, onCall = () => {} } = {}) {
   const calls = [];
+  const args = {};
+  const call = (name, received, value) => {
+    (args[name] = args[name] || []).push(received);
+    onCall(name);
+    if (failOn === name) throw Object.assign(new Error("Apple event timed out."), { errorNumber: -1712 });
+    return value();
+  };
   const windowObjects = new Map();
   const windows = {
-    id: () => data.map((w) => w.id),
+    id: (...a) => call("windows.id", a, () => data.map((w) => w.id)),
     tabs: {
-      id: () => data.map((w) => w.tabs.map((t) => t.id)),
-      title: () => data.map((w) => w.tabs.map((t) => t.title)),
-      url: () => data.map((w) => w.tabs.map((t) => t.url)),
+      id: (...a) => call("tabs.id", a, () => data.map((w) => w.tabs.map((t) => t.id))),
+      title: (...a) => call("tabs.title", a, () => data.map((w) => w.tabs.map((t) => t.title))),
+      url: (...a) => call("tabs.url", a, () => data.map((w) => w.tabs.map((t) => t.url))),
     },
     byId(id) {
       const found = data.find((w) => w.id === id);
@@ -31,7 +40,7 @@ function fakeChrome(data, { running = true } = {}) {
       }
       if (!windowObjects.has(id)) {
         const win = {
-          tabs: { id: () => found.tabs.map((t) => t.id) },
+          tabs: { id: (...a) => call("window.tabs.id", a, () => found.tabs.map((t) => t.id)) },
           _activeTabIndex: 1,
           _index: 2,
         };
@@ -54,14 +63,20 @@ function fakeChrome(data, { running = true } = {}) {
       return windowObjects.get(id);
     },
   };
-  const app = { running: () => running, activate: () => calls.push("activate") };
+  const app = {
+    running: () => running,
+    activate: (...a) =>
+      call("activate", a, () => {
+        calls.push("activate");
+      }),
+  };
   Object.defineProperty(app, "windows", {
     get() {
       if (!running) throw new Error("windows must not be read when Chrome is not running");
       return windows;
     },
   });
-  return { app, calls };
+  return { app, calls, args };
 }
 
 const twoWindows = () => [
@@ -140,4 +155,84 @@ test("a Chrome tab titled with quotes, a newline, emoji and Hebrew gives an arg 
   assert.deepEqual(JSON.parse(JSON.stringify(item)), item);
   assert.equal(item.title, title);
   assert.deepEqual(JSON.parse(item.arg), { action: "activate", browser: "chrome", windowId: "100", tabId: "5" });
+});
+
+// A clock that moves forward by `stepMs` each time it is read, so budgets are deterministic.
+function steppingClock(stepMs) {
+  let t = 1_000_000;
+  return () => {
+    const now = t;
+    t += stepMs;
+    return now;
+  };
+}
+
+const modifierOf = (received) => {
+  assert.equal(received.length, 1, "one modifier object and nothing else");
+  assert.equal(typeof received[0], "object");
+  return received[0].timeout;
+};
+
+test("every read passes a modifier object with a positive whole-second timeout", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  assert.equal(listTabs(app, "Google Chrome").length, 3);
+  assert.deepEqual(Object.keys(args), ["windows.id", "tabs.id", "tabs.title", "tabs.url"]);
+  for (const received of Object.values(args)) {
+    const timeout = modifierOf(received[0]);
+    assert.ok(Number.isInteger(timeout) && timeout >= 1, `timeout ${timeout}`);
+  }
+});
+
+test("timeouts count down from one shared budget and never exceed what is left", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  // The clock moves 1.5 s each time it is read, so 8.5, 7, 5.5 and 4 s are left at the four reads.
+  listTabs(app, "Google Chrome", { budgetSeconds: 10, now: steppingClock(1500) });
+  const timeouts = ["windows.id", "tabs.id", "tabs.title", "tabs.url"].map((name) => modifierOf(args[name][0]));
+  assert.deepEqual(timeouts, [8, 7, 5, 4]);
+});
+
+test("the timeout is never less than one second", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  // 2.4, 1.8, 1.2 and 0.6 s are left at the four reads: the last one still gets a whole second.
+  listTabs(app, "Google Chrome", { budgetSeconds: 3, now: steppingClock(600) });
+  const timeouts = ["windows.id", "tabs.id", "tabs.title", "tabs.url"].map((name) => modifierOf(args[name][0]));
+  assert.deepEqual(timeouts, [2, 1, 1, 1]);
+});
+
+test("a spent budget stops listing before the next read", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  // 0.4 s are left at the first read, nothing at the second.
+  assert.deepEqual(listTabs(app, "Google Chrome", { budgetSeconds: 1, now: steppingClock(600) }), []);
+  assert.deepEqual(Object.keys(args), ["windows.id"], "one read happened, the rest were skipped");
+});
+
+test("a read that times out gives [] and does not throw, whichever read it is", () => {
+  for (const failOn of ["windows.id", "tabs.id", "tabs.title", "tabs.url"]) {
+    const { app } = fakeChrome(twoWindows(), { failOn });
+    assert.deepEqual(listTabs(app, "Google Chrome"), [], failOn);
+  }
+});
+
+test("activateTab passes timeout modifiers and shares one budget", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  assert.equal(activateTab(app, "100", "2", { budgetSeconds: 10, now: steppingClock(1500) }), true);
+  assert.equal(modifierOf(args["window.tabs.id"][0]), 8);
+  assert.equal(modifierOf(args["activate"][0]), 7);
+});
+
+test("activateTab with the default budget uses a positive timeout on both calls", () => {
+  const { app, args } = fakeChrome(twoWindows());
+  assert.equal(activateTab(app, "100", "2"), true);
+  for (const name of ["window.tabs.id", "activate"]) assert.ok(modifierOf(args[name][0]) >= 1, name);
+});
+
+test("activateTab returns false and changes nothing when reading the window's tabs times out", () => {
+  const { app, calls } = fakeChrome(twoWindows(), { failOn: "window.tabs.id" });
+  assert.equal(activateTab(app, "100", "2"), false);
+  assert.deepEqual(calls, []);
+});
+
+test("activateTab returns false when raising Chrome times out", () => {
+  const { app } = fakeChrome(twoWindows(), { failOn: "activate" });
+  assert.equal(activateTab(app, "100", "2"), false);
 });
