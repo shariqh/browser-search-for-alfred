@@ -200,17 +200,31 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
 
 test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {
   const readme = readFileSync(path.join(root, "README.md"), "utf8");
-  const marker = "\n<!-- developer -->\n";
-  const at = readme.indexOf(marker);
-  assert.ok(at > 0, "README.md has a <!-- developer --> line of its own");
-  // The user part runs from the top up to the marker line, exclusive. Both sides are compared with trailing
-  // whitespace and line ends trimmed, so the blank line before the marker and the plist's closing newline don't matter.
-  const userPart = readme.slice(0, at).trimEnd();
-  assert.equal(plistJson().readme.trimEnd(), userPart);
+  assert.ok(readme.startsWith("# Browser Search for Alfred\n"), "starts with the title");
+  const open = "\n<!-- user -->\n";
+  const close = "\n<!-- developer -->\n";
+  const from = readme.indexOf(open);
+  const to = readme.indexOf(close);
+  assert.ok(from > 0, "README.md has a <!-- user --> line of its own");
+  assert.ok(to > from, "README.md has a <!-- developer --> line of its own after it");
+  assert.equal(readme.indexOf(open, from + 1), -1, "one <!-- user --> line");
+  assert.equal(readme.indexOf(close, to + 1), -1, "one <!-- developer --> line");
+  // The user part is the text between the two marker lines, exclusive. Both sides are trimmed, so the blank lines
+  // around the markers and the plist's closing newline don't matter.
+  const userPart = readme.slice(from + open.length, to).trim();
+  assert.equal(plistJson().readme.trim(), userPart);
   assert.ok(userPart.startsWith("## Setup\n"), "starts with ## Setup");
-  const setup = userPart.indexOf("\n## Setup\n");
   const usage = userPart.indexOf("\n## Usage\n");
-  assert.ok(usage > 0, "has ## Usage");
-  assert.equal(setup, -1, "## Setup appears once, at the top");
+  assert.ok(usage > 0, "has ## Usage after ## Setup");
+  assert.equal(userPart.indexOf("\n## Setup\n"), -1, "## Setup appears once, at the top");
   assert.ok(!userPart.includes("<!--"), "no HTML comments in the user part");
+  // The install links point at the add-on's listing and at the latest release.
+  assert.ok(
+    userPart.slice(0, usage).includes("https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/"),
+    "Setup links the add-on",
+  );
+  assert.ok(
+    userPart.slice(usage).includes("https://github.com/shariqh/browser-search-for-alfred/releases/latest"),
+    "Usage links the latest release",
+  );
 });

@@ -1,10 +1,18 @@
+# Browser Search for Alfred
+
+Search open tabs, bookmarks and history in Firefox, Chrome, Safari, Brave and Edge from Alfred.
+
+<!-- user -->
+
 ## Setup
 
-1. Firefox only: install the Browser Search add-on in Firefox. Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
+1. Firefox only: install the [Browser Search add-on](https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/) in Firefox. Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
 2. For bookmarks and history in Safari, Chrome, Brave and Edge: press <kbd>↩</kbd> on "Allow Alfred to read ... bookmarks and history". It opens Full Disk Access in System Settings. Turn on Alfred, then search again.
 3. For tabs in Safari, Chrome, Brave and Edge: macOS asks once whether Alfred may control the browser. Choose OK. If you chose Don't Allow, press <kbd>↩</kbd> on "Allow Alfred to control ..." and turn on the browser under Alfred in Privacy & Security > Automation.
 
 ## Usage
+
+Get the workflow from the [latest release](https://github.com/shariqh/browser-search-for-alfred/releases/latest), and open the downloaded file to import it into Alfred.
 
 Search the tabs open in your running browsers, except private windows in Firefox, Chrome, Brave and Edge, via the `tab` keyword.
 
@@ -30,11 +38,7 @@ Change the keywords, and tick or untick Firefox, Google Chrome, Safari, Brave Br
 
 <!-- developer -->
 
-# Browser Search for Alfred
-
-Search open tabs, bookmarks and history in Firefox, Safari, Chrome, Brave and Edge from one Alfred keyword.
-
-Work in progress. The text above this line is the workflow's README in Alfred; keep it identical to the `readme` in `workflow/info.plist` (the build test checks). The design is in [docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md](docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md), and the build log is in [docs/build-log.md](docs/build-log.md).
+The text between the `<!-- user -->` and `<!-- developer -->` lines is the workflow's README in Alfred; keep it identical to the `readme` in `workflow/info.plist` (the build test checks). The design is in [docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md](docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md), and the build log is in [docs/build-log.md](docs/build-log.md).
 
 Other facts: bookmarks and history list and open only `http`, `https` and `file` links; tabs are not filtered by link type. For Chrome, Brave, Edge and Safari history, matching ignores upper and lower case only for plain English letters. Bookmarks are cached for 5 minutes and refreshed in the background. Notices such as "Allow Alfred to read ..." or "Set up Firefox" are never cached.
 
@@ -53,7 +57,9 @@ Other facts: bookmarks and history list and open only `http`, `https` and `file`
 - `Browser-Search-for-Alfred.alfredworkflow`, the workflow to import into Alfred.
 - `browser-search-for-alfred-addon.zip`, the Firefox add-on.
 
-## Load the add-on temporarily
+## Test unreleased changes: load the add-on temporarily
+
+The released add-on comes from Mozilla's add-on site. To try a change before it is released, build it and load it by hand:
 
 1. Unzip `dist/browser-search-for-alfred-addon.zip` into a folder.
 2. In Firefox, open `about:debugging`, then choose This Firefox.

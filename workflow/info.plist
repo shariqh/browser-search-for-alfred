@@ -284,11 +284,13 @@
 	<key>readme</key>
 	<string>## Setup
 
-1. Firefox only: install the Browser Search add-on in Firefox. Then press &lt;kbd&gt;↩&lt;/kbd&gt; on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
+1. Firefox only: install the [Browser Search add-on](https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/) in Firefox. Then press &lt;kbd&gt;↩&lt;/kbd&gt; on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
 2. For bookmarks and history in Safari, Chrome, Brave and Edge: press &lt;kbd&gt;↩&lt;/kbd&gt; on "Allow Alfred to read ... bookmarks and history". It opens Full Disk Access in System Settings. Turn on Alfred, then search again.
 3. For tabs in Safari, Chrome, Brave and Edge: macOS asks once whether Alfred may control the browser. Choose OK. If you chose Don't Allow, press &lt;kbd&gt;↩&lt;/kbd&gt; on "Allow Alfred to control ..." and turn on the browser under Alfred in Privacy &amp; Security &gt; Automation.
 
 ## Usage
+
+Get the workflow from the [latest release](https://github.com/shariqh/browser-search-for-alfred/releases/latest), and open the downloaded file to import it into Alfred.
 
 Search the tabs open in your running browsers, except private windows in Firefox, Chrome, Brave and Edge, via the `tab` keyword.
 
