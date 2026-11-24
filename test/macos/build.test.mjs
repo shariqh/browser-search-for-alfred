@@ -98,6 +98,28 @@ test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script
   }
 });
 
+test("the Action Script feeds one Post Notification, placed to its right", { skip: !darwin }, () => {
+  const p = plistJson();
+  const notes = p.objects.filter((o) => o.type === "alfred.workflow.output.notification");
+  assert.equal(notes.length, 1);
+  const [note] = notes;
+  assert.deepEqual(note.config, {
+    title: "Browser Search",
+    text: "{query}",
+    onlyshowifquerypopulated: true,
+    lastpathcomponent: false,
+    removeextension: false,
+  });
+  assert.equal(note.version, 1);
+  assert.match(note.uid, /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}$/);
+  assert.ok(![TAB_UID, BMK_UID, HIST_UID, ACT_UID].includes(note.uid));
+  assert.deepEqual((p.connections[ACT_UID] || []).map((c) => [c.destinationuid, c.modifiers]), [[note.uid, 0]]);
+  assert.ok(p.uidata[note.uid].xpos > p.uidata[ACT_UID].xpos, "to the right of the Action Script");
+  assert.equal(p.uidata[note.uid].ypos, p.uidata[ACT_UID].ypos);
+  // Nothing else is connected from the notification, and every other object keeps its own connections.
+  assert.equal(p.connections[note.uid], undefined);
+});
+
 test("Configure Workflow has three keyword fields and five browser checkboxes", { skip: !darwin }, () => {
   const keyword = (variable, label, value) => ({
     type: "textfield",

@@ -1,6 +1,7 @@
 #!/usr/bin/osascript -l JavaScript
 // Entry for actions: osascript -l JavaScript act.js '<json>'
-// The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox;
+// The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox, and prints one
+// line for Alfred's notification (every other action prints nothing, so no empty notification appears);
 // "activate" brings one browser tab (Firefox, Chrome, Safari, Brave or Edge) to the front; "open" opens a bookmark or
 // history URL in its own browser, "open-default" in the default browser, "open-privacy" opens Full Disk Access in
 // System Settings, and "open-automation" opens Automation there.
@@ -49,6 +50,28 @@ function setupFirefox() {
   jxa.writeTextAtomic(registrationFile, text, 0o644);
 }
 
+const SETUP_DONE = "Firefox is set up. If Firefox was open, reload the Browser Search add-on.";
+
+// The error text as a short reason with no file path: everything from the first "/" on is dropped (a path can
+// hold spaces, so it is cut rather than matched), so "cannot write /Users/x/..." becomes "cannot write a file".
+function shortReason(error) {
+  const message = String((error && error.message) || error || "").replace(/\s+/g, " ");
+  const head = message.split("/")[0].trim();
+  if (head === "") return "something went wrong";
+  return head === message ? head : `${head} a file`;
+}
+
+// What Alfred shows after Return on "Set up Firefox": a failure is a message, not an osascript error, which Alfred
+// would not show at all.
+function setupFirefoxMessage() {
+  try {
+    setupFirefox();
+    return SETUP_DONE;
+  } catch (e) {
+    return `Couldn't set up Firefox: ${shortReason(e)}`;
+  }
+}
+
 // Brings one tab to the front. Firefox: the add-on selects the tab and its window, then macOS raises Firefox. If the
 // tab closed meanwhile the add-on's answer is an error, which is ignored; Firefox still comes forward if it is
 // running and is never launched. Chrome, Brave and Edge: chromium.js selects the tab by its ID. Safari: its tabs
@@ -59,6 +82,10 @@ function activate(request) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
   if (request.browser === "firefox") {
+    // Firefox that is not running gets no request, which would wait out the timeout, and is never activated.
+    const running =
+      jxa.channel() !== "" ? jxa.envVar("BSA_TEST_FIREFOX_RUNNING") === "1" : jxa.isRunning(constants.FIREFOX_BUNDLE_ID);
+    if (!running) return;
     const client = loadLib("firefox-client");
     client.request("activate-tab", { tabId: request.tabId, windowId: request.windowId }, constants.FIREFOX_TIMEOUT_MS);
     jxa.activateApp(constants.FIREFOX_BUNDLE_ID);
@@ -130,8 +157,7 @@ function run(argv) {
   const request = JSON.parse(argv[0] || "{}");
   switch (request.action) {
     case "setup-firefox":
-      setupFirefox();
-      return;
+      return setupFirefoxMessage();
     case "activate":
       activate(request);
       return;

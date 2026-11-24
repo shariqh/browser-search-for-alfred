@@ -145,6 +145,23 @@ test("act.js activate sends activate-tab with the given IDs and brings Firefox f
   );
 });
 
+test("act.js activate for a Firefox that is not running sends nothing and activates nothing", { skip: !darwin }, async () => {
+  const fx = fixture();
+  await withFirefox(
+    fx,
+    (message, ff) => ff.send({ id: message.id, payload: null }),
+    async (ff) => {
+      const arg = JSON.stringify({ action: "activate", browser: "firefox", windowId: 2, tabId: 13 });
+      const started = Date.now();
+      const out = await osascript(fx, "act.js", arg, "0");
+      assert.equal(out, "");
+      assert.ok(Date.now() - started < 3000, "returns at once");
+      assert.equal(ff.received.length, 0);
+      assert.ok(!existsSync(path.join(fx.home, "activated-apps.log")), "nothing activated");
+    },
+  );
+});
+
 test("an exception while finishing the Firefox request still prints one JSON document", { skip: !darwin }, async () => {
   // No payload shape makes the item code throw any more (bad entries are skipped), so break finish() in a copy.
   const fx = fixture();

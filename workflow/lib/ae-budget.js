@@ -12,7 +12,7 @@
   // `with timeout`. Not proven against a real application here, because any live target raises an
   // Automation prompt. Whole seconds are used, never below 1, so a nearly spent budget does not round to 0;
   // the shared deadline therefore bounds the listing to about the budget plus at most one second per read.
-  // Writes (activeTabIndex, index) are plain assignments, which cannot carry modifiers.
+  // Writes (activeTabIndex, index, minimized) are plain assignments, which cannot carry modifiers.
   const DEFAULT_BUDGET_SECONDS = 1;
 
   // errAEEventNotPermitted (-1743, macOS SDK AppleEvents.h): Automation of that application was refused.
@@ -60,7 +60,7 @@
     return { timeout, spent, call };
   }
 
-  const api = { budget, isDenied };
+  const api = { budget, isDenied, isTimeout };
   if (typeof module === "object" && module && module.exports) module.exports = api;
   return api;
 })();
