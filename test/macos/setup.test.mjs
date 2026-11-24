@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdtempSync, readFileSync, statSync, writeFileSync, mkdirSync, readdirSync, realpathSync, existsSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, statSync, writeFileSync, mkdirSync, readdirSync, realpathSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import path from "node:path";
@@ -41,12 +41,14 @@ function listAll(dir, prefix = "") {
   return found.sort();
 }
 
+const SET_UP = "Firefox is set up. Search again in a few seconds; if Firefox still doesn't answer, restart it.";
+
 const mode = (p) => statSync(p).mode & 0o777;
 
 test("setup-firefox installs the helper copy and registration", { skip: !darwin }, async () => {
   const fx = fixture();
   const out = await act(fx, { action: "setup-firefox" });
-  assert.equal(out, "");
+  assert.equal(out, `${SET_UP}\n`);
   const helper = constants.helperInstallPath(fx.home);
   const reg = constants.registrationPath(fx.home);
   assert.equal(mode(helper), 0o755);
@@ -100,4 +102,34 @@ test("setup-firefox writes only inside HOME", { skip: !darwin }, async () => {
     `Library/Application Support/${constants.BUNDLE_ID}/firefox-helper.js`,
   ].sort());
   assert.ok(!existsSync(path.join(fx.home, "Library/Caches")));
+});
+
+test("setup-firefox says what went wrong, without a path, and still exits 0", { skip: !darwin }, async () => {
+  const fx = fixture();
+  const helper = constants.helperInstallPath(fx.home);
+  const folder = path.dirname(helper);
+  mkdirSync(folder, { recursive: true });
+  chmodSync(folder, 0o555);
+  try {
+    const out = await act(fx, { action: "setup-firefox" });
+    assert.match(out, /^Couldn't set up Firefox: .+\n$/);
+    assert.equal(out.trim().split("\n").length, 1);
+    assert.ok(!out.includes("/"), `no path in: ${out}`);
+    assert.ok(!out.includes(fx.home), "no home folder in the message");
+    assert.ok(!existsSync(constants.registrationPath(fx.home)), "no registration without the helper copy");
+  } finally {
+    chmodSync(folder, 0o755);
+  }
+});
+
+test("no other action prints anything", { skip: !darwin }, async () => {
+  const fx = fixture();
+  for (const request of [
+    { action: "open-privacy" },
+    { action: "open-automation" },
+    { action: "open", browser: "chrome", url: "https://example.com/" },
+    { action: "activate", browser: "chrome", windowId: "1", tabId: "2" },
+  ]) {
+    assert.equal(await act(fx, request), "", request.action);
+  }
 });

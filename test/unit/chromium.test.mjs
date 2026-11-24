@@ -12,8 +12,8 @@ const readNames = ["windows.id", "windows.mode", "tabs.id", "tabs.title", "tabs.
 // Most tests only want the tab array; the result shape has its own tests.
 const listTabs = (app, browser, options) => listTabsRaw(app, browser, options).tabs;
 
-// A stand-in shaped like JXA's Application("Google Chrome"). `data` is [{id, mode?, tabs: [{id, title, url}]}];
-// mode defaults to "normal".
+// A stand-in shaped like JXA's Application("Google Chrome"). `data` is [{id, mode?, minimized?, tabs: [{id, title, url}]}];
+// mode defaults to "normal", minimized to false.
 // Every read and command records the arguments it receives in `args`, keyed by name. `failOn` names a call
 // (for example "tabs.title") that throws the way a timed-out Apple Event does.
 // `rejectArgs` makes every call that is given an argument throw a TypeError, as JXA would if it refused the
@@ -60,6 +60,14 @@ function fakeChrome(data, { running = true, failOn = null, errorNumber = -1712, 
           set(value) {
             calls.push(`activeTabIndex=${value}`);
             win._activeTabIndex = value;
+          },
+        });
+        // Like JXA: win.minimized() reads (an Apple Event), win.minimized = false writes.
+        Object.defineProperty(win, "minimized", {
+          get: () => (...a) => call("window.minimized", a, () => Boolean(found.minimized)),
+          set(value) {
+            calls.push(`minimized=${value}`);
+            found.minimized = value;
           },
         });
         Object.defineProperty(win, "index", {
@@ -136,6 +144,42 @@ test("not running returns [] and never reads windows", () => {
 
 test("activates by id: sets activeTabIndex and index, then activates", () => {
   const { app, calls } = fakeChrome(twoWindows());
+  assert.equal(activateTab(app, "100", "2"), true);
+  assert.deepEqual(calls, ["activeTabIndex=2", "index=1", "activate"]);
+});
+
+test("a minimised window is restored before it is raised", () => {
+  const data = twoWindows();
+  data[0].minimized = true;
+  const { app, calls } = fakeChrome(data);
+  assert.equal(activateTab(app, "100", "2"), true);
+  assert.deepEqual(calls, ["minimized=false", "activeTabIndex=2", "index=1", "activate"]);
+  assert.equal(data[0].minimized, false);
+});
+
+test("a window that is not minimised is never written to", () => {
+  const { app, calls } = fakeChrome(twoWindows());
+  assert.equal(activateTab(app, "100", "1"), true);
+  assert.ok(!calls.some((c) => c.startsWith("minimized")));
+});
+
+test("a minimised window with a closed tab is left minimised", () => {
+  const data = twoWindows();
+  data[0].minimized = true;
+  const { app, calls } = fakeChrome(data);
+  assert.equal(activateTab(app, "100", "99"), false);
+  assert.deepEqual(calls, []);
+  assert.equal(data[0].minimized, true);
+});
+
+test("a timeout reading the minimised state returns false and changes nothing", () => {
+  const { app, calls } = fakeChrome(twoWindows(), { failOn: "window.minimized" });
+  assert.equal(activateTab(app, "100", "2"), false);
+  assert.deepEqual(calls, []);
+});
+
+test("a window that will not say whether it is minimised is still activated", () => {
+  const { app, calls } = fakeChrome(twoWindows(), { failOn: "window.minimized", errorNumber: -10000 });
   assert.equal(activateTab(app, "100", "2"), true);
   assert.deepEqual(calls, ["activeTabIndex=2", "index=1", "activate"]);
 });
@@ -234,13 +278,14 @@ test("activateTab passes timeout modifiers and shares one budget", () => {
   const { app, args } = fakeChrome(twoWindows());
   assert.equal(activateTab(app, "100", "2", { budgetSeconds: 10, now: steppingClock(1500) }), true);
   assert.equal(modifierOf(args["window.tabs.id"][0]), 8);
-  assert.equal(modifierOf(args["activate"][0]), 7);
+  assert.equal(modifierOf(args["window.minimized"][0]), 7);
+  assert.equal(modifierOf(args["activate"][0]), 5);
 });
 
 test("activateTab with the default budget uses a positive timeout on both calls", () => {
   const { app, args } = fakeChrome(twoWindows());
   assert.equal(activateTab(app, "100", "2"), true);
-  for (const name of ["window.tabs.id", "activate"]) assert.ok(modifierOf(args[name][0]) >= 1, name);
+  for (const name of ["window.tabs.id", "window.minimized", "activate"]) assert.ok(modifierOf(args[name][0]) >= 1, name);
 });
 
 test("activateTab returns false and changes nothing when reading the window's tabs times out", () => {

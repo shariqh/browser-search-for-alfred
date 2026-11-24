@@ -1,10 +1,18 @@
+# Browser Search for Alfred
+
+Search open tabs, bookmarks and history in Firefox, Chrome, Safari, Brave and Edge from Alfred.
+
+<!-- user -->
+
 ## Setup
 
-1. Firefox only: install the Browser Search add-on in Firefox. Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
+1. Firefox only: install the [Browser Search add-on](https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/) in Firefox (Firefox 140 or later). Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
 2. For bookmarks and history in Safari, Chrome, Brave and Edge: press <kbd>↩</kbd> on "Allow Alfred to read ... bookmarks and history". It opens Full Disk Access in System Settings. Turn on Alfred, then search again.
 3. For tabs in Safari, Chrome, Brave and Edge: macOS asks once whether Alfred may control the browser. Choose OK. If you chose Don't Allow, press <kbd>↩</kbd> on "Allow Alfred to control ..." and turn on the browser under Alfred in Privacy & Security > Automation.
 
 ## Usage
+
+Get the workflow from the [latest release](https://github.com/shariqh/browser-search-for-alfred/releases/latest), and open the downloaded file to import it into Alfred.
 
 Search the tabs open in your running browsers, except private windows in Firefox, Chrome, Brave and Edge, via the `tab` keyword.
 
@@ -30,11 +38,7 @@ Change the keywords, and tick or untick Firefox, Google Chrome, Safari, Brave Br
 
 <!-- developer -->
 
-# Browser Search for Alfred
-
-Search open tabs, bookmarks and history in Firefox, Safari, Chrome, Brave and Edge from one Alfred keyword.
-
-Work in progress. The text above this line is the workflow's README in Alfred; keep it identical to the `readme` in `workflow/info.plist` (the build test checks). The design is in [docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md](docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md), and the build log is in [docs/build-log.md](docs/build-log.md).
+The text between the `<!-- user -->` and `<!-- developer -->` lines is the workflow's README in Alfred; keep it identical to the `readme` in `workflow/info.plist` (the build test checks). The design is in [docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md](docs/superpowers/specs/2026-11-21-browser-search-for-alfred-design.md), and the build log is in [docs/build-log.md](docs/build-log.md).
 
 Other facts: bookmarks and history list and open only `http`, `https` and `file` links; tabs are not filtered by link type. For Chrome, Brave, Edge and Safari history, matching ignores upper and lower case only for plain English letters. Bookmarks are cached for 5 minutes and refreshed in the background. Notices such as "Allow Alfred to read ..." or "Set up Firefox" are never cached.
 
@@ -42,6 +46,7 @@ Other facts: bookmarks and history list and open only `http`, `https` and `file`
 
 - `npm test` runs the unit tests. They run anywhere with Node 24.
 - `npm run test:macos` runs the tests that need macOS. They use `osascript` (JXA), `plutil` and `unzip`, and `zip` through `scripts/build.sh`, which macOS includes. No browser needs to be installed: the tests use a fake Firefox and a fixture folder as `HOME`, and never touch your real `~/Library` or any running browser.
+- `npm run lint:addon` runs `web-ext lint` on the add-on and must report 0 errors. Its one warning, `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`, is expected: the add-on is desktop-only (it needs the macOS native helper), so do not "fix" it by adding `gecko_android`, which would offer the add-on on Android.
 - `npm run check:firefox` is not part of the tests. It writes the real registration to `~/Library` (see below) and opens a separate Firefox window with a throwaway profile. Your own Firefox is left alone. It sets `BSA_SKIP_APPLESCRIPT=1`, which makes `tab` skip Safari, Chrome, Brave and Edge, so no Apple Event goes to a real browser.
 - Under `BSA_TEST_CHANNEL`, every browser that is driven by Apple Events (Safari, Chrome, Brave, Edge) is replaced by a fake built from `BSA_TEST_TABS_<KEY>`. Never run the entry scripts without it and a fixture `HOME`.
 
@@ -52,7 +57,9 @@ Other facts: bookmarks and history list and open only `http`, `https` and `file`
 - `Browser-Search-for-Alfred.alfredworkflow`, the workflow to import into Alfred.
 - `browser-search-for-alfred-addon.zip`, the Firefox add-on.
 
-## Load the add-on temporarily
+## Test unreleased changes: load the add-on temporarily
+
+The released add-on comes from Mozilla's add-on site. To try a change before it is released, build it and load it by hand:
 
 1. Unzip `dist/browser-search-for-alfred-addon.zip` into a folder.
 2. In Firefox, open `about:debugging`, then choose This Firefox.

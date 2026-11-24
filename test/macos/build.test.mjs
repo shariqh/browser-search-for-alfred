@@ -35,7 +35,7 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.3.0");
+  assert.equal(p.version, "1.0.0");
 });
 
 const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
@@ -96,6 +96,28 @@ test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script
     );
     assert.ok(p.uidata[uid], `uidata for ${uid}`);
   }
+});
+
+test("the Action Script feeds one Post Notification, placed to its right", { skip: !darwin }, () => {
+  const p = plistJson();
+  const notes = p.objects.filter((o) => o.type === "alfred.workflow.output.notification");
+  assert.equal(notes.length, 1);
+  const [note] = notes;
+  assert.deepEqual(note.config, {
+    title: "Browser Search",
+    text: "{query}",
+    onlyshowifquerypopulated: true,
+    lastpathcomponent: false,
+    removeextension: false,
+  });
+  assert.equal(note.version, 1);
+  assert.match(note.uid, /^[0-9A-F]{8}(-[0-9A-F]{4}){3}-[0-9A-F]{12}$/);
+  assert.ok(![TAB_UID, BMK_UID, HIST_UID, ACT_UID].includes(note.uid));
+  assert.deepEqual((p.connections[ACT_UID] || []).map((c) => [c.destinationuid, c.modifiers]), [[note.uid, 0]]);
+  assert.ok(p.uidata[note.uid].xpos > p.uidata[ACT_UID].xpos, "to the right of the Action Script");
+  assert.equal(p.uidata[note.uid].ypos, p.uidata[ACT_UID].ypos);
+  // Nothing else is connected from the notification, and every other object keeps its own connections.
+  assert.equal(p.connections[note.uid], undefined);
 });
 
 test("Configure Workflow has three keyword fields and five browser checkboxes", { skip: !darwin }, () => {
@@ -170,23 +192,43 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   assert.ok(names.includes("manifest.json"));
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("addon/")));
   const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
-  assert.equal(manifest.version, "0.2.0");
+  assert.equal(manifest.version, "1.0.0");
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
+  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity", "bookmarksInfo"] });
+  assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
+  assert.deepEqual(manifest.icons, { "48": "icons/icon-48.png", "96": "icons/icon-96.png" });
+  assert.ok(names.includes("icons/icon-48.png"));
+  assert.ok(names.includes("icons/icon-96.png"));
 });
 
 test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {
   const readme = readFileSync(path.join(root, "README.md"), "utf8");
-  const marker = "\n<!-- developer -->\n";
-  const at = readme.indexOf(marker);
-  assert.ok(at > 0, "README.md has a <!-- developer --> line of its own");
-  // The user part runs from the top up to the marker line, exclusive. Both sides are compared with trailing
-  // whitespace and line ends trimmed, so the blank line before the marker and the plist's closing newline don't matter.
-  const userPart = readme.slice(0, at).trimEnd();
-  assert.equal(plistJson().readme.trimEnd(), userPart);
+  assert.ok(readme.startsWith("# Browser Search for Alfred\n"), "starts with the title");
+  const open = "\n<!-- user -->\n";
+  const close = "\n<!-- developer -->\n";
+  const from = readme.indexOf(open);
+  const to = readme.indexOf(close);
+  assert.ok(from > 0, "README.md has a <!-- user --> line of its own");
+  assert.ok(to > from, "README.md has a <!-- developer --> line of its own after it");
+  assert.equal(readme.indexOf(open, from + 1), -1, "one <!-- user --> line");
+  assert.equal(readme.indexOf(close, to + 1), -1, "one <!-- developer --> line");
+  // The user part is the text between the two marker lines, exclusive. Both sides are trimmed, so the blank lines
+  // around the markers and the plist's closing newline don't matter.
+  const userPart = readme.slice(from + open.length, to).trim();
+  assert.equal(plistJson().readme.trim(), userPart);
   assert.ok(userPart.startsWith("## Setup\n"), "starts with ## Setup");
-  const setup = userPart.indexOf("\n## Setup\n");
   const usage = userPart.indexOf("\n## Usage\n");
-  assert.ok(usage > 0, "has ## Usage");
-  assert.equal(setup, -1, "## Setup appears once, at the top");
+  assert.ok(usage > 0, "has ## Usage after ## Setup");
+  assert.equal(userPart.indexOf("\n## Setup\n"), -1, "## Setup appears once, at the top");
   assert.ok(!userPart.includes("<!--"), "no HTML comments in the user part");
+  assert.ok(userPart.slice(0, usage).includes("(Firefox 140 or later)"), "Setup names the Firefox version the add-on needs");
+  // The install links point at the add-on's listing and at the latest release.
+  assert.ok(
+    userPart.slice(0, usage).includes("https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/"),
+    "Setup links the add-on",
+  );
+  assert.ok(
+    userPart.slice(usage).includes("https://github.com/shariqh/browser-search-for-alfred/releases/latest"),
+    "Usage links the latest release",
+  );
 });

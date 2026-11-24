@@ -15,9 +15,9 @@ function steppingClock(stepMs, start = 1_000_000) {
   };
 }
 
-// A stand-in shaped like JXA's Application("Safari"). `data` is [{id (a number, as in Safari), tabs: [{name, url}]}].
+// A stand-in shaped like JXA's Application("Safari"). `data` is [{id (a number, as in Safari), miniaturized?, tabs: [{name, url}]}].
 // Reads record the arguments they receive in `args`. `failOn` names a read ("windows.id", "tabs.name",
-// "tabs.url", "window.tabs.url") that throws with `errorNumber`. `breakArrays` lets a test hand back
+// "tabs.url", "window.tabs.url", "window.miniaturized") that throws with `errorNumber`. `breakArrays` lets a test hand back
 // custom per-window arrays for the name and url reads.
 function fakeSafari(data, { running = true, failOn = null, errorNumber = -1712, names = null, urls = null } = {}) {
   const calls = [];
@@ -58,6 +58,14 @@ function fakeSafari(data, { running = true, failOn = null, errorNumber = -1712, 
           set(value) {
             calls.push(`currentTab=${value.position}`);
             win._currentTab = value;
+          },
+        });
+        // Like JXA: win.miniaturized() reads (an Apple Event), win.miniaturized = false writes.
+        Object.defineProperty(win, "miniaturized", {
+          get: () => (...a) => call("window.miniaturized", a, () => Boolean(found.miniaturized)),
+          set(value) {
+            calls.push(`miniaturized=${value}`);
+            found.miniaturized = value;
           },
         });
         Object.defineProperty(win, "index", {
@@ -160,6 +168,37 @@ test("activateTab selects the tab at the position when its URL is still there", 
   const { app, calls } = fakeSafari(twoWindows);
   assert.equal(activateTab(app, "11", "2", "https://b.example/"), true);
   assert.deepEqual(calls, ["currentTab=2", "index=1", "activate"]);
+});
+
+test("activateTab restores a minimised window before it raises it", () => {
+  const data = [{ id: 11, miniaturized: true, tabs: [{ name: "Alpha", url: "https://a.example/" }, { name: "Beta", url: "https://b.example/" }] }];
+  const { app, calls } = fakeSafari(data);
+  assert.equal(activateTab(app, "11", "2", "https://b.example/"), true);
+  assert.deepEqual(calls, ["miniaturized=false", "currentTab=2", "index=1", "activate"]);
+  assert.equal(data[0].miniaturized, false);
+});
+
+test("activateTab leaves a minimised window minimised when its tab is gone", () => {
+  const data = [{ id: 11, miniaturized: true, tabs: [{ name: "Alpha", url: "https://a.example/" }] }];
+  const { app, calls } = fakeSafari(data);
+  assert.equal(activateTab(app, "11", "1", "https://closed.example/"), false);
+  assert.deepEqual(calls, []);
+  assert.equal(data[0].miniaturized, true);
+});
+
+test("activateTab reads the minimised state with a timeout, and a timeout there changes nothing", () => {
+  const { app, args } = fakeSafari(twoWindows);
+  activateTab(app, "11", "1", "https://a.example/", { budgetSeconds: 5 });
+  assert.equal(typeof args["window.miniaturized"][0][0].timeout, "number");
+  const slow = fakeSafari(twoWindows, { failOn: "window.miniaturized" });
+  assert.equal(activateTab(slow.app, "11", "1", "https://a.example/"), false);
+  assert.deepEqual(slow.calls, []);
+});
+
+test("activateTab still activates when the window will not say whether it is minimised", () => {
+  const { app, calls } = fakeSafari(twoWindows, { failOn: "window.miniaturized", errorNumber: -10000 });
+  assert.equal(activateTab(app, "11", "1", "https://a.example/"), true);
+  assert.deepEqual(calls, ["currentTab=1", "index=1", "activate"]);
 });
 
 test("activateTab finds a tab that moved, by its URL in the same window", () => {

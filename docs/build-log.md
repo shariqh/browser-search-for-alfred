@@ -52,3 +52,9 @@ Shariq updated the workflow on the Air, swapped in the 0.2.0 add-on, ran "Set up
 ## 2026-11-23: milestone 3 try-out on the MacBook Air
 
 Shariq imported 0.3.0 and tried `tab` with Safari, Chrome and Firefox. Chrome's incognito tabs stayed hidden and his normal Chrome tabs showed. Safari's tabs listed and Return brought them forward. Everything else was fine: the checkboxes, the icon and the readme. Tabs in Safari's private windows do show, because Safari's scripting gives no way to tell a private window apart. He chose to keep them and say so plainly; the README now says they are listed. Brave and Edge weren't tried on real browsers.
+
+## 2026-11-24: milestone 4, 1.0.0 prepared
+
+- The workflow and the add-on are both 1.0.0, and `docs/release-notes/1.0.0.md` is written. The release notes cover the three keywords across the five browsers, how to install, what the add-on can see, and the known limits (Safari's private-window tabs are listed, Firefox data shows only while Firefox runs, Brave and Edge are tested only with stand-ins).
+- Decisions: the add-on is listed on addons.mozilla.org rather than only signed for self-distribution; it declares `browsingActivity` and `bookmarksInfo` because Mozilla requires a data collection declaration for new add-ons and lists bookmarks separately from browsing activity; and it needs Firefox 140 or later, the first version that shows Firefox's built-in consent for that declaration. The README and the workflow's readme say so next to the add-on link.
+- The real-Firefox gate result, and the release itself, are recorded later.

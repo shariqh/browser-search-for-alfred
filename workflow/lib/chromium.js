@@ -10,7 +10,19 @@
 
   // Every real call carries a per-call timeout counted down from one shared deadline (lib/ae-budget.js).
   const aeBudget = typeof loadLib === "function" ? loadLib("ae-budget") : require("./ae-budget.js");
-  const { budget, isDenied } = aeBudget;
+  const { budget, isDenied, isTimeout } = aeBudget;
+
+  // Whether the window is minimised. The read is an Apple Event, so it goes through the budget like the others. A
+  // window that will not say (an error that is not a refusal, a timeout or a spent budget) counts as not minimised, so Return
+  // still selects the tab.
+  function isMinimized(win, { call, spent }) {
+    try {
+      return call((...m) => win.minimized(...m)) === true;
+    } catch (e) {
+      if (isDenied(e) || isTimeout(e) || spent()) throw e;
+      return false;
+    }
+  }
 
   function sameList(a, b) {
     if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
@@ -65,14 +77,17 @@
     }
   }
 
-  // Selects the tab, puts its window in front, then raises Chrome. Returns false, changing nothing more
+  // Selects the tab, brings its window back when it is minimised, puts it in front, then raises Chrome. Returns false, changing nothing more
   // and never throwing, when the window or the tab has gone or Chrome does not answer in time.
   function activateTab(app, windowId, tabId, options) {
     try {
-      const { call } = budget(options);
+      const timer = budget(options);
+      const { call } = timer;
       const win = app.windows.byId(String(windowId));
       const index = call((...m) => win.tabs.id(...m)).map(String).indexOf(String(tabId));
       if (index < 0) return false;
+      // A plain write, which cannot carry a timeout, like the two below.
+      if (isMinimized(win, timer)) win.minimized = false;
       win.activeTabIndex = index + 1;
       win.index = 1;
       call((...m) => app.activate(...m));

@@ -12,7 +12,7 @@
 
   // Every real call carries a per-call timeout counted down from one shared deadline (lib/ae-budget.js).
   const aeBudget = typeof loadLib === "function" ? loadLib("ae-budget") : require("./ae-budget.js");
-  const { budget, isDenied } = aeBudget;
+  const { budget, isDenied, isTimeout } = aeBudget;
 
   // tab = {browser: "safari", browserName: "Safari", windowId, tabId, title, url}; every ID is a string and
   // tabId is the tab's position in its window, counting from 1.
@@ -57,20 +57,35 @@
     return app.windows.byId(/^\d+$/.test(id) ? Number(id) : id);
   }
 
-  // Selects the tab, puts its window in front, then raises Safari. The tab is the one at `tabPosition`
+  // Whether the window is minimised, which Safari's standard suite calls miniaturized. The read is an Apple Event,
+  // so it goes through the budget. A window that will not say (an error that is not a refusal, a timeout or a spent budget)
+  // counts as not minimised, so Return still selects the tab.
+  function isMiniaturized(win, { call, spent }) {
+    try {
+      return call((...m) => win.miniaturized(...m)) === true;
+    } catch (e) {
+      if (isDenied(e) || isTimeout(e) || spent()) throw e;
+      return false;
+    }
+  }
+
+  // Selects the tab, brings its window back when it is minimised, puts it in front, then raises Safari. The tab is the one at `tabPosition`
   // (counting from 1) when it still has `url`, otherwise the first tab in that window with `url`. If no tab in
   // the window has `url`, nothing is changed and the result is false, so a tab that moved or closed after the
   // list was shown is never replaced by a different page. Never throws; false also means the window has gone or
   // Safari did not answer in time.
   function activateTab(app, windowId, tabPosition, url, options) {
     try {
-      const { call } = budget(options);
+      const timer = budget(options);
+      const { call } = timer;
       const win = windowSpecifier(app, windowId);
       // Same normalisation as listTabs, so a tab listed with an empty URL matches its live (missing) one.
       const urls = call((...m) => win.tabs.url(...m)).map((u) => String(u || ""));
       const position = Number(tabPosition);
       let index = urls[position - 1] === url ? position - 1 : urls.indexOf(url);
       if (index < 0) return false;
+      // A plain write, which cannot carry a timeout, like the two below.
+      if (isMiniaturized(win, timer)) win.miniaturized = false;
       // JXA element indexes count from 0.
       win.currentTab = win.tabs[index];
       win.index = 1;
