@@ -170,8 +170,10 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   assert.ok(names.includes("manifest.json"));
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("addon/")));
   const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
-  assert.equal(manifest.version, "0.2.0");
+  assert.equal(manifest.version, "1.0.0");
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
+  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity"] });
+  assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
 });
 
 test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {

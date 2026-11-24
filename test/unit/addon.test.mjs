@@ -86,12 +86,15 @@ test("reconnectDelayMs doubles from 1000 and caps at 10000", () => {
 test("manifest.json", () => {
   assert.equal(manifest.manifest_version, 2);
   assert.equal(manifest.name, "Browser Search for Alfred");
-  assert.equal(manifest.version, "0.2.0");
+  assert.equal(manifest.version, "1.0.0");
   assert.equal(manifest.background.persistent, true);
   assert.deepEqual(manifest.background.scripts, ["handler.js", "background.js"]);
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
   assert.equal(manifest.description, "Lists this browser's tabs, bookmarks and history for Alfred, and brings a tab to the front.");
   assert.equal(manifest.browser_specific_settings.gecko.id, constants.ADDON_ID);
+  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity"] });
+  assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
+  assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, "142.0");
 });
 
 test("background.js connects to the native host by its fixed name", () => {
