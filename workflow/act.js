@@ -50,7 +50,7 @@ function setupFirefox() {
   jxa.writeTextAtomic(registrationFile, text, 0o644);
 }
 
-const SETUP_DONE = "Firefox is set up. If Firefox was open, reload the Browser Search add-on.";
+const SETUP_DONE = "Firefox is set up. Search again in a few seconds; if Firefox still doesn't answer, restart it.";
 
 // The error text as a short reason with no file path: everything from the first "/" on is dropped (a path can
 // hold spaces, so it is cut rather than matched), so "cannot write /Users/x/..." becomes "cannot write a file".

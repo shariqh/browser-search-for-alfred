@@ -41,7 +41,7 @@ function listAll(dir, prefix = "") {
   return found.sort();
 }
 
-const SET_UP = "Firefox is set up. If Firefox was open, reload the Browser Search add-on.";
+const SET_UP = "Firefox is set up. Search again in a few seconds; if Firefox still doesn't answer, restart it.";
 
 const mode = (p) => statSync(p).mode & 0o777;
 

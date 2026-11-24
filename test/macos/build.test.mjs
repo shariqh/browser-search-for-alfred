@@ -194,8 +194,11 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
   assert.equal(manifest.version, "1.0.0");
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
-  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity"] });
+  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity", "bookmarksInfo"] });
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
+  assert.deepEqual(manifest.icons, { "48": "icons/icon-48.png", "96": "icons/icon-96.png" });
+  assert.ok(names.includes("icons/icon-48.png"));
+  assert.ok(names.includes("icons/icon-96.png"));
 });
 
 test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {

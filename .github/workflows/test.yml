@@ -15,7 +15,9 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      - run: npm ci
       - run: npm test
+      - run: npm run lint:addon
 
   macos:
     runs-on: macos-latest

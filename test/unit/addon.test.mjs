@@ -92,9 +92,10 @@ test("manifest.json", () => {
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
   assert.equal(manifest.description, "Lists this browser's tabs, bookmarks and history for Alfred, and brings a tab to the front.");
   assert.equal(manifest.browser_specific_settings.gecko.id, constants.ADDON_ID);
-  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity"] });
+  assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity", "bookmarksInfo"] });
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
   assert.equal(manifest.browser_specific_settings.gecko_android, undefined);
+  assert.deepEqual(manifest.icons, { "48": "icons/icon-48.png", "96": "icons/icon-96.png" });
 });
 
 test("background.js connects to the native host by its fixed name", () => {
