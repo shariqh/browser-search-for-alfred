@@ -35,7 +35,7 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.3.0");
+  assert.equal(p.version, "1.0.0");
 });
 
 const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
@@ -218,6 +218,7 @@ test("README's user part is info.plist's readme, in the Alfred Gallery order", {
   assert.ok(usage > 0, "has ## Usage after ## Setup");
   assert.equal(userPart.indexOf("\n## Setup\n"), -1, "## Setup appears once, at the top");
   assert.ok(!userPart.includes("<!--"), "no HTML comments in the user part");
+  assert.ok(userPart.slice(0, usage).includes("(Firefox 140 or later)"), "Setup names the Firefox version the add-on needs");
   // The install links point at the add-on's listing and at the latest release.
   assert.ok(
     userPart.slice(0, usage).includes("https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/"),

@@ -6,7 +6,7 @@ Search open tabs, bookmarks and history in Firefox, Chrome, Safari, Brave and Ed
 
 ## Setup
 
-1. Firefox only: install the [Browser Search add-on](https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/) in Firefox. Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
+1. Firefox only: install the [Browser Search add-on](https://addons.mozilla.org/firefox/addon/browser-search-for-alfred/) in Firefox (Firefox 140 or later). Then press <kbd>↩</kbd> on "Set up Firefox", which the workflow shows the first time you search with Firefox ticked.
 2. For bookmarks and history in Safari, Chrome, Brave and Edge: press <kbd>↩</kbd> on "Allow Alfred to read ... bookmarks and history". It opens Full Disk Access in System Settings. Turn on Alfred, then search again.
 3. For tabs in Safari, Chrome, Brave and Edge: macOS asks once whether Alfred may control the browser. Choose OK. If you chose Don't Allow, press <kbd>↩</kbd> on "Allow Alfred to control ..." and turn on the browser under Alfred in Privacy & Security > Automation.
 
