@@ -1,8 +1,9 @@
 #!/usr/bin/osascript -l JavaScript
 // Entry for actions: osascript -l JavaScript act.js '<json>'
 // The JSON has an "action": "setup-firefox" installs the helper copy and registers it with Firefox;
-// "activate" brings one browser tab (Firefox or Chrome) to the front; "open" opens a bookmark or history URL in
-// its own browser, "open-default" in the default browser, and "open-privacy" opens Full Disk Access in System Settings.
+// "activate" brings one browser tab (Firefox, Chrome, Safari, Brave or Edge) to the front; "open" opens a bookmark or
+// history URL in its own browser, "open-default" in the default browser, "open-privacy" opens Full Disk Access in
+// System Settings, and "open-automation" opens Automation there.
 ObjC.import("Foundation");
 
 // The folder of this script. Alfred runs entries with the workflow folder as the current directory,
@@ -48,9 +49,12 @@ function setupFirefox() {
   jxa.writeTextAtomic(registrationFile, text, 0o644);
 }
 
-// Brings a Firefox tab to the front: the add-on selects the tab and its window, then macOS raises Firefox.
-// If the tab closed meanwhile the add-on's answer is an error, which is ignored; Firefox still comes forward
-// if it is running and is never launched.
+// Brings one tab to the front. Firefox: the add-on selects the tab and its window, then macOS raises Firefox. If the
+// tab closed meanwhile the add-on's answer is an error, which is ignored; Firefox still comes forward if it is
+// running and is never launched. Chrome, Brave and Edge: chromium.js selects the tab by its ID. Safari: its tabs
+// have no ID, so safari-tabs.js takes the tab at that position when it still shows the URL, else the first tab in
+// that window with the URL, else nothing. A tab or window that closed since the list was shown makes these do
+// nothing, and they are only touched while running, so Enter never launches a browser.
 function activate(request) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
@@ -60,25 +64,31 @@ function activate(request) {
     jxa.activateApp(constants.FIREFOX_BUNDLE_ID);
     return;
   }
-  if (request.browser === "chrome") {
-    // Tests never touch a real Chrome: the activation is only logged.
-    if (jxa.channel() !== "") {
-      jxa.logActivation(`chrome ${request.windowId} ${request.tabId}`);
-      return;
-    }
-    // Chrome is only touched while it runs, so a closed Chrome is never launched by Enter.
-    if (!jxa.isRunning(constants.CHROME_BUNDLE_ID)) return;
-    // A tab or window that closed since the list was shown makes this do nothing.
-    // By bundle ID, like the isRunning check. A Chrome that quits in the few milliseconds between the two could
-    // be relaunched by JXA; that window is accepted.
-    loadLib("chromium").activateTab(Application(constants.CHROME_BUNDLE_ID), String(request.windowId), String(request.tabId));
+  const registry = loadLib("browsers");
+  const browser = registry.ALL.find((b) => b.key === request.browser && b.family !== "firefox");
+  if (!browser) throw new Error(`unknown browser: ${request.browser}`);
+  const windowId = String(request.windowId);
+  const tabId = String(request.tabId);
+  // Tests never touch a real browser: the activation is only logged.
+  if (jxa.channel() !== "") {
+    jxa.logActivation(`${browser.key} ${windowId} ${tabId}`);
     return;
   }
-  throw new Error(`unknown browser: ${request.browser}`);
+  if (!jxa.isRunning(browser.bundleId)) return;
+  // By bundle ID, like the isRunning check. A browser that quits in the few milliseconds between the two could be
+  // relaunched by JXA; that window is accepted.
+  const app = Application(browser.bundleId);
+  if (browser.family === "safari") {
+    loadLib("safari-tabs").activateTab(app, windowId, tabId, String(request.url));
+  } else {
+    loadLib("chromium").activateTab(app, windowId, tabId);
+  }
 }
 
 const OPEN = "/usr/bin/open";
 const PRIVACY_PANE = "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
+// macOS 27.3's privacy pane index does not list this anchor, so the Allow item's subtitle spells out the path too.
+const AUTOMATION_PANE = "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation";
 
 // Runs /usr/bin/open with `args` (an argv array, no shell). Under BSA_TEST_CHANNEL nothing is opened: logLine is
 // logged instead (see jxa.logActivation).
@@ -100,10 +110,9 @@ function openableUrl(url) {
 
 // Opens a bookmark or history URL in the browser it came from. This may start that browser: Return is an explicit ask.
 function openInBrowser(request) {
-  const constants = loadLib("constants");
-  const bundleIds = { firefox: constants.FIREFOX_BUNDLE_ID, chrome: constants.CHROME_BUNDLE_ID, safari: constants.SAFARI_BUNDLE_ID };
-  if (!Object.prototype.hasOwnProperty.call(bundleIds, request.browser)) throw new Error(`unknown browser: ${request.browser}`);
-  const bundleId = bundleIds[request.browser];
+  const browser = loadLib("browsers").byKey(request.browser);
+  if (!browser) throw new Error(`unknown browser: ${request.browser}`);
+  const bundleId = browser.bundleId;
   const url = openableUrl(request.url);
   runOpen(["-b", bundleId, url], `open ${bundleId} ${url}`);
 }
@@ -134,6 +143,9 @@ function run(argv) {
       return;
     case "open-privacy":
       runOpen([PRIVACY_PANE], "open-privacy");
+      return;
+    case "open-automation":
+      runOpen([AUTOMATION_PANE], "open-automation");
       return;
     default:
       throw new Error(`unknown action: ${request.action}`);

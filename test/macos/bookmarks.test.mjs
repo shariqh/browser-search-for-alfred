@@ -59,6 +59,18 @@ async function fixture() {
   return fx;
 }
 
+// Copies the Chrome fixtures into another Chromium browser's data folder under the fixture HOME, with every title
+// and host given a prefix, so each browser's bookmarks are told apart. Returns the folder.
+function addChromium(fx, dataDir, label) {
+  const slug = label.toLowerCase();
+  cpSync(chromeFixtures, dataDir, { recursive: true });
+  for (const profile of ["Default", "Profile 1"]) {
+    const file = path.join(dataDir, profile, "Bookmarks");
+    writeFileSync(file, readFileSync(file, "utf8").replace(/"name": "/g, `"name": "${label} `).replace(/\.example\.com/g, `.${slug}.example.com`));
+  }
+  return dataDir;
+}
+
 // Always async: the same Node process plays Firefox, and a blocking call would stop it answering.
 async function osascript(fx, script, arg, env = {}) {
   const { stdout } = await execFileAsync("/usr/bin/osascript", ["-l", "JavaScript", path.join(workflowDir, script), arg], {
@@ -241,7 +253,7 @@ test("act.js refuses a javascript: URL, other unopenable URLs and an unknown bro
     { action: "open", browser: "safari", url: "data:text/html,hi" },
     { action: "open", browser: "firefox", url: "place:sort=8" },
     { action: "open", browser: "chrome", url: "chrome://settings" },
-    { action: "open", browser: "edge", url: "https://example.com/" },
+    { action: "open", browser: "opera", url: "https://example.com/" },
     { action: "open", browser: "constructor", url: "https://example.com/" },
     { action: "open-default", url: "javascript:alert(1)" },
     { action: "open-default" },
@@ -252,4 +264,76 @@ test("act.js refuses a javascript: URL, other unopenable URLs and an unknown bro
     await assert.rejects(osascript(fx, "act.js", JSON.stringify(request), env), (err) => err.code !== 0, JSON.stringify(request));
   }
   assert.equal(existsSync(activationLog(fx)), false);
+});
+
+// Brave and Edge read the same way as Chrome, from their own data folders.
+const braveTitles = chromeTitles.map((t) => `Brave ${t}`);
+const edgeTitles = chromeTitles.map((t) => `Edge ${t}`);
+const ALLOW_EDGE = "Allow Alfred to read Microsoft Edge's bookmarks and history";
+const noFirefoxNoSafari = { browser_firefox: "0", browser_safari: "0" };
+
+test("bmk lists Brave's and Edge's bookmarks in their own places, with their own names and profile names", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  addChromium(fx, constants.braveDataDir(fx.home), "Brave");
+  addChromium(fx, constants.edgeDataDir(fx.home), "Edge");
+  const output = await bmk(fx, noFirefoxNoSafari);
+  assert.deepEqual(output.items.map((item) => item.title), [...chromeTitles, ...braveTitles, ...edgeTitles]);
+  const byTitle = (title) => output.items.find((item) => item.title === title);
+  assert.equal(byTitle("Brave Bar One").subtitle, "Brave Browser (Person 1) · https://bar.brave.example.com/one");
+  assert.equal(byTitle("Edge Work Wiki").subtitle, "Microsoft Edge (Work) · https://wiki.edge.example.com/");
+  assert.equal(byTitle("Brave Bar One").uid, "https://bar.brave.example.com/one");
+  assert.deepEqual(JSON.parse(byTitle("Brave Bar One").arg), { action: "open", browser: "brave", url: "https://bar.brave.example.com/one" });
+  assert.deepEqual(JSON.parse(byTitle("Edge Bar One").arg), { action: "open", browser: "edge", url: "https://bar.edge.example.com/one" });
+  const front = await bmk(fx, { ...noFirefoxNoSafari, BSA_TEST_FRONTMOST: constants.EDGE_BUNDLE_ID });
+  assert.deepEqual(front.items.map((item) => item.title), [...edgeTitles, ...chromeTitles, ...braveTitles]);
+});
+
+test("a Brave with one profile shows no profile name, and unticking browser_brave or browser_edge drops it", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const dir = addChromium(fx, constants.braveDataDir(fx.home), "Brave");
+  addChromium(fx, constants.edgeDataDir(fx.home), "Edge");
+  renameSync(path.join(dir, "Local State"), path.join(fx.root, "Brave Local State.moved"));
+  const output = await bmk(fx, { ...noFirefoxNoSafari, browser_chrome: "0" });
+  assert.deepEqual(output.items.map((item) => item.title), [...braveTitles.slice(0, 4), ...edgeTitles]);
+  assert.equal(output.items[0].subtitle, "Brave Browser · https://bar.brave.example.com/one");
+  const noBrave = await bmk(fx, { ...noFirefoxNoSafari, browser_chrome: "0", browser_brave: "0" });
+  assert.deepEqual(noBrave.items.map((item) => item.title), edgeTitles);
+  const noEdge = await bmk(fx, { ...noFirefoxNoSafari, browser_chrome: "0", browser_edge: "0" });
+  assert.deepEqual(noEdge.items.map((item) => item.title), braveTitles.slice(0, 4));
+});
+
+test("a chmod-000 Edge Bookmarks gives one Allow item for Edge, and the other browsers' bookmarks still show", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  addChromium(fx, constants.braveDataDir(fx.home), "Brave");
+  const edgeDir = addChromium(fx, constants.edgeDataDir(fx.home), "Edge");
+  const file = path.join(edgeDir, "Default", "Bookmarks");
+  chmodSync(file, 0o000);
+  try {
+    const output = await bmk(fx, noFirefoxNoSafari);
+    assert.deepEqual(output.items.map((item) => item.title), [...chromeTitles, ...braveTitles, ALLOW_EDGE]);
+    assert.deepEqual(JSON.parse(output.items.at(-1).arg), { action: "open-privacy" });
+    assert.equal("cache" in output, false, "a notice must never be cached");
+  } finally {
+    chmodSync(file, 0o600);
+  }
+});
+
+test("a Brave or Edge data folder that does not exist gives no items and no Allow item", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  assert.equal(existsSync(constants.braveDataDir(fx.home)), false);
+  assert.equal(existsSync(constants.edgeDataDir(fx.home)), false);
+  const output = await bmk(fx, noFirefoxNoSafari);
+  assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
+  assert.equal(output.items.some((item) => /Allow Alfred/.test(item.title)), false);
+});
+
+test("act.js open logs Brave's and Edge's bundle IDs", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  for (const browser of ["brave", "edge"]) {
+    await osascript(fx, "act.js", JSON.stringify({ action: "open", browser, url: `https://${browser}.example.com/a` }));
+  }
+  assert.equal(
+    readFileSync(activationLog(fx), "utf8"),
+    [`open com.brave.Browser https://brave.example.com/a`, `open com.microsoft.edgemac https://edge.example.com/a`, ""].join("\n"),
+  );
 });

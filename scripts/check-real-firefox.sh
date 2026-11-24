@@ -61,8 +61,8 @@ setup_out="$(/usr/bin/osascript -l JavaScript workflow/act.js '{"action":"setup-
 WEBEXT_PID=$!
 
 # 3. Poll the real script filter until an item's subtitle mentions example.com.
-# The gate must not query a real Chrome (an Apple Event, and possibly an Automation prompt).
-export BSA_SKIP_CHROME=1
+# The gate must not query a real Chrome, Safari, Brave or Edge (an Apple Event, and possibly an Automation prompt).
+export BSA_SKIP_APPLESCRIPT=1
 deadline=$((SECONDS + WAIT_SECONDS))
 last_output=""
 found=0

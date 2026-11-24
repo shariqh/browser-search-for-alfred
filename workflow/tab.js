@@ -1,6 +1,6 @@
 #!/usr/bin/osascript -l JavaScript
 // Script Filter entry for the "tab" keyword: osascript -l JavaScript tab.js '<query>'
-// Prints Alfred's Script Filter JSON with the open browser tabs.
+// Prints Alfred's Script Filter JSON with the open tabs of Firefox, Chrome, Safari, Brave and Edge.
 ObjC.import("Foundation");
 
 // The folder of this script. Alfred runs entries with the workflow folder as the current directory,
@@ -25,9 +25,9 @@ function loadLib(name) {
   return eval(ObjC.unwrap(text));
 }
 
-// Firefox's request steps live in lib/firefox-source.js, shared with the other keywords. Chrome is listed
-// between begin and finish, while Firefox answers. This returns the function that turns Firefox's list-tabs
-// reply into items.
+// Firefox's request steps live in lib/firefox-source.js, shared with the other keywords. The Apple Event browsers
+// are listed between begin and finish, while Firefox answers. This returns the function that turns Firefox's
+// list-tabs reply into items.
 function firefoxTabItems(items) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
@@ -43,50 +43,75 @@ function firefoxTabItems(items) {
     );
 }
 
-// Under BSA_TEST_CHANNEL tests must never send an Apple Event to a real Chrome. Instead the tabs come from the
-// JSON file named by BSA_TEST_CHROME_TABS, shaped {windows: [{id, tabs: [{id, title, url}]}]}, and this builds
-// an object with the interface chromium.js expects. Without the variable Chrome counts as not running.
-function testChromeApp(jxa) {
-  const file = jxa.envVar("BSA_TEST_CHROME_TABS");
+// Under BSA_TEST_CHANNEL tests must never send an Apple Event to a real browser. Instead each Apple Event browser
+// comes from the JSON file named by BSA_TEST_TABS_<KEY> (CHROME, SAFARI, BRAVE, EDGE), holding either
+// {windows: [{id, mode?, tabs: [{id?, title, url}]}]} or {"denied": true}, and this builds an object with the
+// interface its library (chromium.js or safari-tabs.js) reads. Without a file the browser counts as not running.
+// A denied file makes every read fail with -1743, as a refused Automation does. A test-only delayMs makes every
+// read take that long, but never longer than the per-call timeout it was given: a read that would wait longer
+// fails with -1712 after the timeout, like a browser that does not answer. Every read appends
+// "<key> <granted timeout seconds>" (or "<key> none" for a read with no modifier) to $HOME/ae-calls.log, so tests can
+// add up the time the shared budget granted without depending on the machine's speed.
+function testBrowserApp(jxa, browser) {
+  const file = jxa.envVar(`BSA_TEST_TABS_${browser.key.toUpperCase()}`);
   const text = file === "" ? null : jxa.readText(file);
   if (text === null) return null;
-  const windows = JSON.parse(text).windows;
-  const perWindow = (pick) => windows.map((w) => w.tabs.map(pick));
+  const doc = JSON.parse(text);
+  const fail = (message, errorNumber) => {
+    const error = new Error(`${message} (${errorNumber})`);
+    error.errorNumber = errorNumber;
+    throw error;
+  };
+  const callLog = `${jxa.home()}/ae-calls.log`;
+  const read = (pick) => (modifiers) => {
+    const granted = modifiers && modifiers.timeout !== undefined ? String(modifiers.timeout) : "none";
+    jxa.writeTextAtomic(callLog, (jxa.readText(callLog) || "") + `${browser.key} ${granted}\n`, 0o600);
+    if (doc.denied === true) fail("Not authorized to send Apple events", -1743);
+    const delayMs = Number(doc.delayMs) || 0;
+    const limitMs = modifiers && modifiers.timeout !== undefined ? modifiers.timeout * 1000 : Infinity;
+    if (delayMs > 0) $.NSThread.sleepForTimeInterval(Math.min(delayMs, limitMs) / 1000);
+    if (delayMs > limitMs) fail("AppleEvent timed out", -1712);
+    return pick(doc.windows);
+  };
+  const perTab = (pick) => read((windows) => windows.map((w) => w.tabs.map(pick)));
+  const tabs =
+    browser.family === "safari"
+      ? { name: perTab((t) => t.title), url: perTab((t) => t.url) }
+      : { id: perTab((t) => t.id), title: perTab((t) => t.title), url: perTab((t) => t.url) };
   return {
     running: () => true,
     windows: {
-      id: () => windows.map((w) => w.id),
-      tabs: {
-        id: () => perWindow((t) => t.id),
-        title: () => perWindow((t) => t.title),
-        url: () => perWindow((t) => t.url),
-      },
+      id: read((windows) => windows.map((w) => w.id)),
+      mode: read((windows) => windows.map((w) => w.mode || "normal")),
+      tabs,
     },
   };
 }
 
-// Chrome's tabs, or [] when Chrome is not running or skipped. Chrome is only ever touched (an Apple Event, and
-// possibly an Automation prompt) after macOS has said it is running, and it is never launched.
-function chromeItems(items) {
-  const constants = loadLib("constants");
-  const jxa = loadLib("jxa");
-  // The real-Firefox gate sets BSA_SKIP_CHROME so that it never queries a real Chrome.
-  if (jxa.envVar("BSA_SKIP_CHROME") === "1") return [];
-
-  let app;
+// One Apple Event browser's items: its tabs, [automationItem] when macOS refused Automation of it, or [] when it is
+// not running. A browser is only ever touched (an Apple Event, and possibly an Automation prompt) after macOS has
+// said it is running, and it is never launched. deadlineMs is the deadline every Apple Event browser shares. libs =
+// {jxa, chromium, safariTabs}, loaded before the deadline was taken so that loading them does not use the budget.
+function appleEventItems(items, libs, browser, deadlineMs) {
+  const jxa = libs.jxa;
+  let app = null;
   if (jxa.channel() !== "") {
-    app = testChromeApp(jxa);
-  } else if (jxa.isRunning(constants.CHROME_BUNDLE_ID)) {
-    // By bundle ID, like the isRunning check. A Chrome that quits in the few milliseconds between the two could
+    app = testBrowserApp(jxa, browser);
+  } else if (jxa.isRunning(browser.bundleId)) {
+    // By bundle ID, like the isRunning check. A browser that quits in the few milliseconds between the two could
     // be relaunched by JXA; that window is accepted.
-    app = Application(constants.CHROME_BUNDLE_ID);
+    app = Application(browser.bundleId);
   }
   if (!app) return [];
 
-  const appPath = jxa.appPath(constants.CHROME_BUNDLE_ID);
-  return loadLib("chromium")
-    .listTabs(app, "Google Chrome")
-    .map((tab) => items.tabItem(tab, appPath));
+  const options = { deadlineMs };
+  const result =
+    browser.family === "safari"
+      ? libs.safariTabs.listTabs(app, options)
+      : libs.chromium.listTabs(app, browser, options);
+  if (result.denied) return [items.automationItem(browser.name)];
+  const appPath = jxa.appPath(browser.bundleId);
+  return result.tabs.map((tab) => items.tabItem(tab, appPath));
 }
 
 // Alfred needs exactly one JSON document on stdout whatever happens, so nothing may escape run().
@@ -114,7 +139,7 @@ function run() {
     // The Configure Workflow checkboxes: a browser that is switched off is not asked at all.
     const enabled = loadLib("config").enabledBrowsers(jxa.envVar);
 
-    // Send Firefox's request first, list Chrome while Firefox answers, then wait for Firefox.
+    // Send Firefox's request first, list the Apple Event browsers while Firefox answers, then wait for Firefox.
     let begun = { items: [] };
     try {
       if (enabled.firefox) begun = loadLib("firefox-source").begin(WORKFLOW_DIR, "list-tabs", null);
@@ -122,19 +147,31 @@ function run() {
       begun = { items: [items.firefoxSilentItem()] };
     }
 
-    let chrome = [];
-    try {
-      if (enabled.chrome) chrome = chromeItems(items);
-    } catch (e) {
-      // A Chrome failure must not hide Firefox's tabs; it just contributes no items.
+    // Chrome, Safari, Brave and Edge, in the registry's order, each only when ticked. They share one deadline,
+    // so a browser that hangs cannot hold tab for longer than the budget. The real-Firefox gate sets
+    // BSA_SKIP_APPLESCRIPT so that it never sends an Apple Event to a real browser. The libraries are loaded
+    // before the deadline is taken, so loading them does not use the budget.
+    const registry = loadLib("browsers");
+    const libs = { jxa, chromium: loadLib("chromium"), safariTabs: loadLib("safari-tabs") };
+    const skipAppleEvents = jxa.envVar("BSA_SKIP_APPLESCRIPT") === "1";
+    const deadlineMs = Date.now() + constants.TABS_BUDGET_MS;
+    const found = {};
+    for (const browser of registry.ALL) {
+      if (browser.family === "firefox") continue;
+      found[browser.key] = [];
+      if (skipAppleEvents || !enabled[browser.key]) continue;
+      try {
+        found[browser.key] = appleEventItems(items, libs, browser, deadlineMs);
+      } catch (e) {
+        // One browser's failure must not hide the others' tabs; it just contributes no items.
+      }
     }
 
-    let firefox;
     try {
-      firefox = loadLib("firefox-source").finish(begun, firefoxTabItems(items));
+      found.firefox = loadLib("firefox-source").finish(begun, firefoxTabItems(items));
     } catch (e) {
       // A Firefox failure must not hide other browsers' tabs; it looks like a request that got no answer.
-      firefox = [items.firefoxSilentItem()];
+      found.firefox = [items.firefoxSilentItem()];
     }
 
     let front = "";
@@ -143,12 +180,11 @@ function run() {
     } catch (e) {
       // An unknown frontmost app leaves the default order.
     }
-    const ordered = items.orderBrowsers(front, [
-      { bundleId: constants.FIREFOX_BUNDLE_ID, items: firefox },
-      { bundleId: constants.CHROME_BUNDLE_ID, items: chrome },
-    ]);
-    const found = ordered.reduce((all, browser) => all.concat(browser.items), []);
-    return JSON.stringify(items.scriptFilterOutput(found));
+    const ordered = items.orderBrowsers(
+      front,
+      registry.ALL.map((browser) => ({ bundleId: browser.bundleId, items: found[browser.key] })),
+    );
+    return JSON.stringify(items.scriptFilterOutput(ordered.reduce((all, browser) => all.concat(browser.items), [])));
   } catch (e) {
     return errorOutput();
   }

@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,7 +35,7 @@ test("info.plist is valid and identifies the workflow", { skip: !darwin }, () =>
   const p = plistJson();
   assert.equal(p.bundleid, BUNDLE_ID);
   assert.equal(p.name, "Browser Search for Alfred");
-  assert.equal(p.version, "0.2.0");
+  assert.equal(p.version, "0.3.0");
 });
 
 const TAB_UID = "073BBDBA-2E7E-40A2-B550-706A1E1E9397";
@@ -97,7 +98,7 @@ test("three Script Filters run tab.js, bmk.js and hist.js, and one Action Script
   }
 });
 
-test("Configure Workflow has three keyword fields and three browser checkboxes", { skip: !darwin }, () => {
+test("Configure Workflow has three keyword fields and five browser checkboxes", { skip: !darwin }, () => {
   const keyword = (variable, label, value) => ({
     type: "textfield",
     variable,
@@ -119,6 +120,8 @@ test("Configure Workflow has three keyword fields and three browser checkboxes",
     browser("browser_firefox", "Browsers", "Firefox"),
     browser("browser_chrome", "", "Google Chrome"),
     browser("browser_safari", "", "Safari"),
+    browser("browser_brave", "", "Brave Browser"),
+    browser("browser_edge", "", "Microsoft Edge"),
   ]);
 });
 
@@ -126,6 +129,8 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
   const lines = zipList(workflowZip);
   const names = lines.map((l) => l.trim().split(/\s+/).pop());
   const libs = [
+    "ae-budget",
+    "browsers",
     "chromium-files",
     "chromium",
     "config",
@@ -136,16 +141,28 @@ test("workflow zip has the workflow at its root and an executable helper", { ski
     "jxa",
     "registration",
     "safari-files",
+    "safari-tabs",
     "sql",
     "sqlite",
   ];
-  const expected = ["info.plist", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
+  const expected = ["info.plist", "icon.png", "tab.js", "bmk.js", "hist.js", "act.js", "firefox-helper.js", ...libs.map((n) => `lib/${n}.js`)];
   for (const n of expected) {
     assert.ok(names.includes(n), `missing ${n}`);
   }
   assert.ok(!names.some((n) => n.includes(".DS_Store") || n.startsWith("workflow/")));
   const helper = lines.find((l) => l.trim().endsWith(" firefox-helper.js"));
   assert.ok(helper.startsWith("-rwxr-xr-x"), helper);
+});
+
+test("workflow zip has a 512x512 icon.png with an alpha channel", { skip: !darwin }, () => {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "bsa-icon-"));
+  execFileSync("/usr/bin/unzip", ["-q", workflowZip, "icon.png", "-d", dir]);
+  const out = execFileSync("/usr/bin/sips", ["-g", "pixelWidth", "-g", "pixelHeight", "-g", "hasAlpha", path.join(dir, "icon.png")], {
+    encoding: "utf8",
+  });
+  assert.match(out, /pixelWidth: 512\n/);
+  assert.match(out, /pixelHeight: 512\n/);
+  assert.match(out, /hasAlpha: yes\n/);
 });
 
 test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
@@ -155,4 +172,21 @@ test("add-on zip has manifest.json at its root", { skip: !darwin }, () => {
   const manifest = JSON.parse(execFileSync("/usr/bin/unzip", ["-p", addonZip, "manifest.json"], { encoding: "utf8" }));
   assert.equal(manifest.version, "0.2.0");
   assert.deepEqual(manifest.permissions, ["nativeMessaging", "tabs", "bookmarks", "history"]);
+});
+
+test("README's user part is info.plist's readme, in the Alfred Gallery order", { skip: !darwin }, () => {
+  const readme = readFileSync(path.join(root, "README.md"), "utf8");
+  const marker = "\n<!-- developer -->\n";
+  const at = readme.indexOf(marker);
+  assert.ok(at > 0, "README.md has a <!-- developer --> line of its own");
+  // The user part runs from the top up to the marker line, exclusive. Both sides are compared with trailing
+  // whitespace and line ends trimmed, so the blank line before the marker and the plist's closing newline don't matter.
+  const userPart = readme.slice(0, at).trimEnd();
+  assert.equal(plistJson().readme.trimEnd(), userPart);
+  assert.ok(userPart.startsWith("## Setup\n"), "starts with ## Setup");
+  const setup = userPart.indexOf("\n## Setup\n");
+  const usage = userPart.indexOf("\n## Usage\n");
+  assert.ok(usage > 0, "has ## Usage");
+  assert.equal(setup, -1, "## Setup appears once, at the top");
+  assert.ok(!userPart.includes("<!--"), "no HTML comments in the user part");
 });

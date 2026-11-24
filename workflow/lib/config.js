@@ -9,6 +9,8 @@
       firefox: on("browser_firefox"),
       chrome: on("browser_chrome"),
       safari: on("browser_safari"),
+      brave: on("browser_brave"),
+      edge: on("browser_edge"),
     };
   }
 

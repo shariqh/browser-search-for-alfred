@@ -14,14 +14,15 @@
     return typeof url === "string" && /^(https?|file):/i.test(url);
   }
 
-  // tab = {browser: "firefox"|"chrome", browserName, windowId, tabId, title, url}
+  // tab = {browser: a key from lib/browsers.js, browserName, windowId, tabId, title, url}. The arg carries the URL
+  // too, because Safari tabs have no ID: act.js finds a Safari tab that moved by its URL.
   function tabItem(tab, appPath) {
     const title = tab.title ? tab.title : withoutScheme(tab.url);
     const item = {
       title,
       subtitle: `${tab.browserName} · ${tab.url}`,
       // The arg travels through Alfred as one string and comes back to act.js, so it is JSON.
-      arg: JSON.stringify({ action: "activate", browser: tab.browser, windowId: tab.windowId, tabId: tab.tabId }),
+      arg: JSON.stringify({ action: "activate", browser: tab.browser, windowId: tab.windowId, tabId: tab.tabId, url: tab.url }),
       match: matchText(title, tab.url),
       text: { copy: tab.url, largetype: title },
     };
@@ -57,6 +58,16 @@
       title: `Allow Alfred to read ${browserName}'s bookmarks and history`,
       subtitle: "Press Return to open Full Disk Access in System Settings, then turn on Alfred",
       arg: JSON.stringify({ action: "open-privacy" }),
+    };
+  }
+
+  // Shown in place of a browser's tabs when macOS refused Alfred Automation of it (-1743). macOS 27.3's privacy
+  // pane index does not list the Privacy_Automation anchor, so the subtitle spells out where to go.
+  function automationItem(browserName) {
+    return {
+      title: `Allow Alfred to control ${browserName}`,
+      subtitle: `Press Return, then turn on ${browserName} under Alfred in Privacy & Security → Automation`,
+      arg: JSON.stringify({ action: "open-automation" }),
     };
   }
 
@@ -114,7 +125,7 @@
     return { items };
   }
 
-  // browsers = [{bundleId, items}] in the default order [firefox, chrome, safari]. The browser that is frontmost
+  // browsers = [{bundleId, items}] in the registry's default order (lib/browsers.js). The browser that is frontmost
   // moves to the front; any other frontmost app (Alfred's own panel, say) leaves the order alone.
   function orderBrowsers(frontBundleId, browsers) {
     const front = browsers.filter((b) => b.bundleId === frontBundleId);
@@ -132,6 +143,7 @@
     urlItem,
     urlItems,
     needsAccessItem,
+    automationItem,
     historyProblemItem,
     mergeHistory,
     bookmarksOutput,

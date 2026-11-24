@@ -13,6 +13,8 @@ test("fixed identifiers", () => {
   assert.equal(c.FIREFOX_BUNDLE_ID, "org.mozilla.firefox");
   assert.equal(c.CHROME_BUNDLE_ID, "com.google.Chrome");
   assert.equal(c.FIREFOX_TIMEOUT_MS, 400);
+  assert.equal(c.BRAVE_BUNDLE_ID, "com.brave.Browser");
+  assert.equal(c.EDGE_BUNDLE_ID, "com.microsoft.edgemac");
 });
 
 test("HOST_NAME and ADDON_ID satisfy Firefox's rules", () => {
@@ -38,4 +40,8 @@ test("Chrome's data folder, the history limits and Safari's bundle ID", () => {
   assert.equal(c.HISTORY_LIMIT, 50);
   assert.equal(c.SQLITE_TIMEOUT_MS, 400);
   assert.equal(c.SAFARI_BUNDLE_ID, "com.apple.Safari");
+});
+
+test("the Apple Event browsers share a 1500 ms budget for tab", () => {
+  assert.equal(c.TABS_BUDGET_MS, 1500);
 });

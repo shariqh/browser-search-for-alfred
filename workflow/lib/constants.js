@@ -19,6 +19,14 @@
     return `${home}/Library/Application Support/Google/Chrome`;
   }
 
+  function braveDataDir(home) {
+    return `${home}/Library/Application Support/BraveSoftware/Brave-Browser`;
+  }
+
+  function edgeDataDir(home) {
+    return `${home}/Library/Application Support/Microsoft Edge`;
+  }
+
   function safariBookmarksPath(home) {
     return `${home}/Library/Safari/Bookmarks.plist`;
   }
@@ -41,7 +49,13 @@
     FIREFOX_BUNDLE_ID: "org.mozilla.firefox",
     CHROME_BUNDLE_ID: "com.google.Chrome",
     SAFARI_BUNDLE_ID: "com.apple.Safari",
+    BRAVE_BUNDLE_ID: "com.brave.Browser",
+    EDGE_BUNDLE_ID: "com.microsoft.edgemac",
     FIREFOX_TIMEOUT_MS: 400,
+    // tab: Chrome, Safari, Brave and Edge share one deadline this far after the first of them is asked. Each Apple
+    // Event is granted the whole seconds left, never less than 1 (lib/ae-budget.js), so the Apple Event phase ends
+    // within TABS_BUDGET_MS plus at most one second; browsers still waiting when the deadline passes are skipped.
+    TABS_BUDGET_MS: 1500,
     // History: each browser returns at most this many rows, and sqlite3 gets this long to answer.
     HISTORY_LIMIT: 50,
     SQLITE_TIMEOUT_MS: 400,
@@ -49,6 +63,8 @@
     helperInstallPath,
     registrationPath,
     chromeDataDir,
+    braveDataDir,
+    edgeDataDir,
     safariBookmarksPath,
     safariHistoryPath,
     notificationName,

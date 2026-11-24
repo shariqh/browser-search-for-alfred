@@ -376,3 +376,100 @@ test("a Safari History.db that neither read can open gives \"Couldn't read Safar
     ["Set up Firefox", "Couldn't read Safari's history", "50 its", "Work page", "It's 50% off"],
   );
 });
+
+// Brave and Edge keep the same History files as Chrome, in their own data folders. Local State is copied from the
+// Chrome fixtures, so each has the two profiles "Person 1" (Default) and "Work" (Profile 1).
+async function addChromium(fx, dataDir, defaultRows, workRows) {
+  cpSync(chromeFixtures, dataDir, { recursive: true });
+  const as = { chromeDir: dataDir };
+  await makeChromeHistory(as, "Default", defaultRows);
+  await makeChromeHistory(as, "Profile 1", workRows);
+}
+const braveRows = [
+  { url: "https://brave.example.com/a", title: "Brave A", ms: U + 9000 },
+  { url: "https://brave.example.com/b", title: "Brave B", ms: U + 2500 },
+];
+const edgeRows = [{ url: "https://edge.example.com/a", title: "Edge A", ms: U + 9500 }];
+const edgeWorkRows = [{ url: "https://edge.example.com/w", title: "Edge W", ms: U + 500 }];
+const ALLOW_EDGE = "Allow Alfred to read Microsoft Edge's bookmarks and history";
+const noFirefoxNoSafari = { browser_firefox: "0", browser_safari: "0" };
+
+test("hist merges Brave's and Edge's history with Chrome's, newest first, each under its own name", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  await addChromium(fx, constants.braveDataDir(fx.home), braveRows, []);
+  await addChromium(fx, constants.edgeDataDir(fx.home), edgeRows, edgeWorkRows);
+  const { output } = await hist(fx, "", noFirefoxNoSafari);
+  assert.deepEqual(urls(output), [
+    "https://edge.example.com/a",
+    "https://brave.example.com/a",
+    "https://chrome.example.com/50x",
+    "https://work.example.com/",
+    "https://brave.example.com/b",
+    "https://chrome.example.com/its",
+    "https://edge.example.com/w",
+  ]);
+  assert.deepEqual(
+    output.items.map((item) => item.subtitle),
+    [
+      "Microsoft Edge (Person 1) · https://edge.example.com/a",
+      "Brave Browser (Person 1) · https://brave.example.com/a",
+      "Google Chrome (Person 1) · https://chrome.example.com/50x",
+      "Google Chrome (Work) · https://work.example.com/",
+      "Brave Browser (Person 1) · https://brave.example.com/b",
+      "Google Chrome (Person 1) · https://chrome.example.com/its",
+      "Microsoft Edge (Work) · https://edge.example.com/w",
+    ],
+  );
+  assert.deepEqual(JSON.parse(output.items[0].arg), { action: "open", browser: "edge", url: "https://edge.example.com/a" });
+  assert.deepEqual(JSON.parse(output.items[1].arg), { action: "open", browser: "brave", url: "https://brave.example.com/a" });
+});
+
+test("Brave and Edge each give at most 50, and unticking them leaves them unread", { skip: !darwin }, async () => {
+  const many = (prefix) => Array.from({ length: 60 }, (_, i) => ({ url: `https://${prefix}.example.com/${i}`, title: `${prefix} ${i}`, ms: U + 20000 + i }));
+  const fx = await fixture();
+  await addChromium(fx, constants.braveDataDir(fx.home), many("brave"), []);
+  await addChromium(fx, constants.edgeDataDir(fx.home), many("edge"), []);
+  const { output } = await hist(fx, "", noFirefoxNoSafari);
+  const count = (name) => output.items.filter((item) => item.subtitle.startsWith(name)).length;
+  assert.equal(count("Brave Browser"), 50);
+  assert.equal(count("Microsoft Edge"), 50);
+  const off = await hist(fx, "", { ...noFirefoxNoSafari, browser_brave: "0", browser_edge: "0" });
+  assert.equal(off.output.items.some((item) => /Brave|Edge/.test(item.subtitle)), false);
+});
+
+test("a chmod-000 Edge History gives Edge's one Allow item after Chrome's, and the rest still shows", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  await addChromium(fx, constants.braveDataDir(fx.home), braveRows, []);
+  await addChromium(fx, constants.edgeDataDir(fx.home), edgeRows, edgeWorkRows);
+  const file = path.join(constants.edgeDataDir(fx.home), "Profile 1", "History");
+  chmodSync(file, 0o000);
+  try {
+    const { output } = await hist(fx, "", noFirefoxNoSafari);
+    assert.deepEqual(output.items.map((item) => item.title), [ALLOW_EDGE, "Brave A", "50 its", "Work page", "Brave B", "It's 50% off"]);
+    assert.deepEqual(JSON.parse(output.items[0].arg), { action: "open-privacy" });
+  } finally {
+    chmodSync(file, 0o600);
+  }
+});
+
+test("Brave's History that sqlite3 cannot read gives one \"Couldn't read Brave Browser's history\" item; the rest still shows", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  await addChromium(fx, constants.braveDataDir(fx.home), braveRows, []);
+  await addChromium(fx, constants.edgeDataDir(fx.home), edgeRows, edgeWorkRows);
+  writeFileSync(path.join(constants.braveDataDir(fx.home), "Default", "History"), "this is not a database\n".repeat(200));
+  const { output } = await hist(fx, "", noFirefoxNoSafari);
+  assert.equal(output.items[0].title, "Couldn't read Brave Browser's history");
+  assert.equal(output.items.filter((item) => item.title.startsWith("Couldn't read")).length, 1);
+  assert.equal(output.items.some((item) => item.title === "Edge A"), true);
+});
+
+test("a Brave or Edge data folder that does not exist gives no items and no Allow item", { skip: !darwin }, async () => {
+  const fx = await fixture();
+  const { output } = await hist(fx, "", noFirefoxNoSafari);
+  assert.deepEqual(urls(output), [
+    "https://chrome.example.com/50x",
+    "https://work.example.com/",
+    "https://chrome.example.com/its",
+  ]);
+  assert.equal(output.items.some((item) => /Allow Alfred/.test(item.title)), false);
+});

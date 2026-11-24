@@ -9,7 +9,7 @@ import path from "node:path";
 import { startFakeFirefox, workflowDir } from "./fake-firefox.mjs";
 
 // None of these tests may touch a real Chrome: tab.js and act.js read the fake Chrome from
-// BSA_TEST_CHROME_TABS and only log what they would have activated.
+// BSA_TEST_TABS_CHROME and only log what they would have activated.
 const require = createRequire(import.meta.url);
 const constants = require("../../workflow/lib/constants.js");
 const execFileAsync = promisify(execFile);
@@ -83,21 +83,21 @@ const answerWithTabs = (message, ff) => ff.send({ id: message.id, payload: firef
 test("Chrome tabs alone give items with string IDs and arguments that survive the trip", { skip: !darwin }, async () => {
   const fx = fixture();
   await setupFirefox(fx);
-  const { output } = await tab(fx, { BSA_TEST_CHROME_TABS: writeChromeTabs(fx) });
+  const { output } = await tab(fx, { BSA_TEST_TABS_CHROME: writeChromeTabs(fx) });
   assert.equal(output.skipknowledge, true);
   assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
   assert.deepEqual(
     output.items.map((item) => JSON.parse(item.arg)),
     [
-      { action: "activate", browser: "chrome", windowId: "500", tabId: "901" },
-      { action: "activate", browser: "chrome", windowId: "500", tabId: "902" },
-      { action: "activate", browser: "chrome", windowId: "501", tabId: "903" },
+      { action: "activate", browser: "chrome", windowId: "500", tabId: "901", url: "https://chrome.example.com/one" },
+      { action: "activate", browser: "chrome", windowId: "500", tabId: "902", url: "https://chrome.example.org/two" },
+      { action: "activate", browser: "chrome", windowId: "501", tabId: "903", url: "https://chrome.example.net/3" },
     ],
   );
   assert.equal(output.items[0].subtitle, "Google Chrome · https://chrome.example.com/one");
 });
 
-test("without BSA_TEST_CHROME_TABS Chrome counts as not running", { skip: !darwin }, async () => {
+test("without BSA_TEST_TABS_CHROME Chrome counts as not running", { skip: !darwin }, async () => {
   const fx = fixture();
   await setupFirefox(fx);
   const { output } = await tab(fx);
@@ -110,7 +110,7 @@ test("Firefox and Chrome merge, Firefox first when Alfred's own panel is frontmo
   await withFirefox(fx, answerWithTabs, async (ff) => {
     const { output } = await tab(fx, {
       BSA_TEST_FIREFOX_RUNNING: "1",
-      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
       BSA_TEST_FRONTMOST: "com.runningwithcrayons.Alfred",
     });
     assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two", ...chromeTitles]);
@@ -122,7 +122,7 @@ test("the default order is Firefox first when nothing says what is frontmost", {
   const fx = fixture();
   await setupFirefox(fx);
   await withFirefox(fx, answerWithTabs, async () => {
-    const { output } = await tab(fx, { BSA_TEST_FIREFOX_RUNNING: "1", BSA_TEST_CHROME_TABS: writeChromeTabs(fx) });
+    const { output } = await tab(fx, { BSA_TEST_FIREFOX_RUNNING: "1", BSA_TEST_TABS_CHROME: writeChromeTabs(fx) });
     assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two", ...chromeTitles]);
   });
 });
@@ -133,22 +133,22 @@ test("Chrome frontmost puts the Chrome tabs first", { skip: !darwin }, async () 
   await withFirefox(fx, answerWithTabs, async () => {
     const { output } = await tab(fx, {
       BSA_TEST_FIREFOX_RUNNING: "1",
-      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
       BSA_TEST_FRONTMOST: CHROME,
     });
     assert.deepEqual(output.items.map((item) => item.title), [...chromeTitles, "Fire One", "Fire Two"]);
   });
 });
 
-test("BSA_SKIP_CHROME=1 gives no Chrome items even when the Chrome tabs file is set", { skip: !darwin }, async () => {
+test("BSA_SKIP_APPLESCRIPT=1 gives no Chrome items even when the Chrome tabs file is set", { skip: !darwin }, async () => {
   const fx = fixture();
   await setupFirefox(fx);
   await withFirefox(fx, answerWithTabs, async () => {
     const { output } = await tab(fx, {
       BSA_TEST_FIREFOX_RUNNING: "1",
-      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
       BSA_TEST_FRONTMOST: CHROME,
-      BSA_SKIP_CHROME: "1",
+      BSA_SKIP_APPLESCRIPT: "1",
     });
     assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two"]);
   });
@@ -160,7 +160,7 @@ test("browser_chrome=0 gives no Chrome items", { skip: !darwin }, async () => {
   await withFirefox(fx, answerWithTabs, async () => {
     const { output } = await tab(fx, {
       BSA_TEST_FIREFOX_RUNNING: "1",
-      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
       browser_chrome: "0",
     });
     assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two"]);
@@ -173,7 +173,7 @@ test("browser_firefox=0 gives no Firefox items and sends no request", { skip: !d
   await withFirefox(fx, answerWithTabs, async (ff) => {
     const { output } = await tab(fx, {
       BSA_TEST_FIREFOX_RUNNING: "1",
-      BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+      BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
       browser_firefox: "0",
     });
     assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
@@ -185,7 +185,7 @@ test("browser_firefox=0 hides the Set up Firefox item too", { skip: !darwin }, a
   const fx = fixture();
   const { output } = await tab(fx, {
     BSA_TEST_FIREFOX_RUNNING: "1",
-    BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+    BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
     browser_firefox: "0",
   });
   assert.deepEqual(output.items.map((item) => item.title), chromeTitles);
@@ -196,7 +196,7 @@ test("Firefox that does not answer still shows Chrome tabs within the time budge
   await setupFirefox(fx);
   const { output, elapsedMs } = await tab(fx, {
     BSA_TEST_FIREFOX_RUNNING: "1",
-    BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+    BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
   });
   assert.deepEqual(output.items.map((item) => item.title), ["Firefox didn't answer", ...chromeTitles]);
   assert.ok(elapsedMs < 1000, `took ${elapsedMs} ms`);
@@ -206,7 +206,7 @@ test("the Firefox setup item and Chrome tabs appear together", { skip: !darwin }
   const fx = fixture();
   const { output } = await tab(fx, {
     BSA_TEST_FIREFOX_RUNNING: "1",
-    BSA_TEST_CHROME_TABS: writeChromeTabs(fx),
+    BSA_TEST_TABS_CHROME: writeChromeTabs(fx),
     BSA_TEST_FRONTMOST: CHROME,
   });
   assert.deepEqual(output.items.map((item) => item.title), [...chromeTitles, "Set up Firefox"]);
@@ -219,7 +219,7 @@ test("a broken Chrome tabs file gives no Chrome items and leaves the Firefox tab
     await withFirefox(fx, answerWithTabs, async () => {
       const { output } = await tab(fx, {
         BSA_TEST_FIREFOX_RUNNING: "1",
-        BSA_TEST_CHROME_TABS: writeChromeTabs(fx, broken),
+        BSA_TEST_TABS_CHROME: writeChromeTabs(fx, broken),
       });
       assert.deepEqual(output.items.map((item) => item.title), ["Fire One", "Fire Two"], broken);
     });

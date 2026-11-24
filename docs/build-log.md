@@ -40,3 +40,15 @@ One snag on the way: the two files were first sent as chat attachments, which he
 ## 2026-11-23: milestone 2 try-out on the MacBook Air
 
 Shariq updated the workflow on the Air, swapped in the 0.2.0 add-on, ran "Set up Firefox" again, and went through `bmk`, `hist`, Return, ⌘Return and the browser checkboxes with his own Firefox, Chrome and Safari. His report: "all worked as expected." That covers the parts the tests can't reach: real-Firefox bookmarks and history, how macOS treats Alfred reading Chrome's and Safari's data, the Full Disk Access link, and a just-visited Safari page showing up in `hist`. He didn't say which permission path Chrome took (a macOS question, Full Disk Access, or nothing), so that stays unrecorded.
+
+## 2026-11-23: milestone 3, more browsers
+
+- Added Safari tabs, Brave and Edge (tabs, bookmarks and history), a checkbox for each of the five browsers, Allow items that explain a missing macOS permission, the Gallery-style README and the icon. Version 0.3.0 for the workflow; the add-on is unchanged at 0.2.0.
+- Fixed on the way: incognito windows are now left out of Chrome, Brave and Edge tabs (Firefox's private tabs were already left out).
+- Safari doesn't tell Alfred which windows are private, so whether its private windows are listed stays unknown until the try-out.
+- Brave and Edge are tested only against fixtures, not real browsers, until the try-out.
+- The real-Firefox check (`npm run check:firefox`) passed (`REAL FIREFOX: PASS`) with every Apple Event browser skipped (`BSA_SKIP_APPLESCRIPT=1`). It covers Firefox tabs only.
+
+## 2026-11-23: milestone 3 try-out on the MacBook Air
+
+Shariq imported 0.3.0 and tried `tab` with Safari, Chrome and Firefox. Chrome's incognito tabs stayed hidden and his normal Chrome tabs showed. Safari's tabs listed and Return brought them forward. Everything else was fine: the checkboxes, the icon and the readme. Tabs in Safari's private windows do show, because Safari's scripting gives no way to tell a private window apart. He chose to keep them and say so plainly; the README now says they are listed. Brave and Edge weren't tried on real browsers.

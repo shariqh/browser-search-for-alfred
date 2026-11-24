@@ -70,7 +70,7 @@ test("three Firefox tabs give three items in tab order", { skip: !darwin }, asyn
       );
       assert.deepEqual(
         output.items.map((item) => JSON.parse(item.arg)),
-        tabs.map((t) => ({ action: "activate", browser: "firefox", windowId: t.windowId, tabId: t.id })),
+        tabs.map((t) => ({ action: "activate", browser: "firefox", windowId: t.windowId, tabId: t.id, url: t.url })),
       );
       assert.equal(output.items[0].subtitle, "Firefox · https://example.com/one");
       assert.equal(ff.received.length, 1);
@@ -203,7 +203,13 @@ test("payload entries that aren't tab objects are skipped, not treated as a fail
         output.items.map((item) => item.title),
         ["Good"],
       );
-      assert.deepEqual(JSON.parse(output.items[0].arg), { action: "activate", browser: "firefox", windowId: 3, tabId: 21 });
+      assert.deepEqual(JSON.parse(output.items[0].arg), {
+        action: "activate",
+        browser: "firefox",
+        windowId: 3,
+        tabId: 21,
+        url: "https://example.com/good",
+      });
     },
   );
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/osascript -l JavaScript
 // Script Filter entry for the "hist" keyword: osascript -l JavaScript hist.js '<query>'
-// Prints Alfred's Script Filter JSON with the history of Firefox, Chrome and Safari matching every typed word,
+// Prints Alfred's Script Filter JSON with the history of Firefox, Chrome, Safari, Brave and Edge matching every typed word,
 // newest first. Each browser searches by itself; Alfred does not filter these results.
 ObjC.import("Foundation");
 
@@ -49,15 +49,16 @@ function firefoxEntries(payload) {
     }));
 }
 
-// Starts one sqlite3 per Chrome profile's History. Returns {denied: true} when macOS keeps Chrome's data from
-// Alfred (Local State or any profile's History is "denied"), else {queries: [{profile, handle}]}. A profile with
-// no History is skipped.
-function startChrome(query) {
+// Starts one sqlite3 per profile's History for one Chromium browser (browser is its entry in lib/browsers.js).
+// Returns {denied: true} when macOS keeps that browser's data from Alfred (Local State or any profile's History is
+// "denied"), else {queries: [{profile, handle}]}. A profile with no History, or a browser with no data folder, is
+// skipped.
+function startChromium(browser, query) {
   const constants = loadLib("constants");
   const jxa = loadLib("jxa");
   const files = loadLib("chromium-files");
   const sqlite = loadLib("sqlite");
-  const dataDir = constants.chromeDataDir(jxa.home());
+  const dataDir = browser.dataDir(jxa.home());
 
   const state = jxa.readFileResult(`${dataDir}/Local State`);
   if (!state.ok && state.reason === "denied") return { denied: true };
@@ -80,9 +81,9 @@ function startChrome(query) {
   };
 }
 
-// Chrome's entries from the queries startChrome started: {entries, problem}. A query that failed or timed out gives
-// nothing, and problem is the reason of the first one that did ("timeout" or "error"), else null.
-function finishChrome(queries, deadlineMs) {
+// One Chromium browser's entries from the queries startChromium started: {entries, problem}. A query that failed or
+// timed out gives nothing, and problem is the reason of the first one that did ("timeout" or "error"), else null.
+function finishChromium(browser, queries, deadlineMs) {
   const files = loadLib("chromium-files");
   const sqlite = loadLib("sqlite");
   const entries = [];
@@ -95,8 +96,8 @@ function finishChrome(queries, deadlineMs) {
     }
     for (const row of result.rows) {
       entries.push({
-        browser: "chrome",
-        browserName: "Google Chrome",
+        browser: browser.key,
+        browserName: browser.name,
         profile: query.profile,
         title: typeof row.title === "string" ? row.title : "",
         url: row.url,
@@ -174,10 +175,10 @@ function run(argv) {
     const enabled = loadLib("config").enabledBrowsers(jxa.envVar);
 
     // Setup, "not answering", Allow and history-problem items, which come before the results.
-    const notices = { firefox: [], chrome: [], safari: [] };
-    const lists = { firefox: [], chrome: [], safari: [] };
+    const notices = { firefox: [], chrome: [], safari: [], brave: [], edge: [] };
+    const lists = { firefox: [], chrome: [], safari: [], brave: [], edge: [] };
 
-    // Ask Firefox first, start sqlite3 for Chrome and Safari while it answers, then collect them all.
+    // Ask Firefox first, start sqlite3 for the other browsers while it answers, then collect them all.
     let begun = { items: [] };
     try {
       if (enabled.firefox) {
@@ -191,24 +192,18 @@ function run(argv) {
     }
 
     // A failure in one browser must not hide another's history; it just contributes no items.
-    let chrome = { queries: [] };
-    try {
-      if (enabled.chrome) chrome = startChrome(query);
-    } catch (e) {}
+    const registry = loadLib("browsers");
+    const chromium = {};
+    for (const browser of registry.chromium()) {
+      chromium[browser.key] = { queries: [] };
+      try {
+        if (enabled[browser.key]) chromium[browser.key] = startChromium(browser, query);
+      } catch (e) {}
+    }
 
     let safari = { handle: null };
     try {
       if (enabled.safari) safari = startSafari(query);
-    } catch (e) {}
-
-    try {
-      if (chrome.denied) {
-        notices.chrome = [items.needsAccessItem("Google Chrome")];
-      } else {
-        const finished = finishChrome(chrome.queries, deadlineMs);
-        lists.chrome = finished.entries;
-        if (finished.problem) notices.chrome = [items.historyProblemItem("Google Chrome", finished.problem)];
-      }
     } catch (e) {}
 
     try {
@@ -220,6 +215,19 @@ function run(argv) {
         if (finished.problem) notices.safari = [items.historyProblemItem("Safari", finished.problem)];
       }
     } catch (e) {}
+
+    for (const browser of registry.chromium()) {
+      try {
+        const started = chromium[browser.key];
+        if (started.denied) {
+          notices[browser.key] = [items.needsAccessItem(browser.name)];
+        } else {
+          const finished = finishChromium(browser, started.queries, deadlineMs);
+          lists[browser.key] = finished.entries;
+          if (finished.problem) notices[browser.key] = [items.historyProblemItem(browser.name, finished.problem)];
+        }
+      } catch (e) {}
+    }
 
     // Firefox has its own timeout, counted from when its request was sent. The reply becomes entries here, and
     // finish returns only a setup or "not answering" item.
@@ -236,15 +244,17 @@ function run(argv) {
       firefox: jxa.appPath(constants.FIREFOX_BUNDLE_ID),
       chrome: jxa.appPath(constants.CHROME_BUNDLE_ID),
       safari: jxa.appPath(constants.SAFARI_BUNDLE_ID),
+      brave: jxa.appPath(constants.BRAVE_BUNDLE_ID),
+      edge: jxa.appPath(constants.EDGE_BUNDLE_ID),
     };
     // Unopenable URLs go before the merge, so they never take one of a browser's places.
     const openable = (list) => list.filter((entry) => items.isOpenableUrl(entry.url));
     const merged = items.mergeHistory(
-      [openable(lists.firefox), openable(lists.chrome), openable(lists.safari)],
+      [openable(lists.firefox), openable(lists.chrome), openable(lists.safari), openable(lists.brave), openable(lists.edge)],
       constants.HISTORY_LIMIT,
     );
     const found = notices.firefox
-      .concat(notices.chrome, notices.safari)
+      .concat(notices.chrome, notices.safari, notices.brave, notices.edge)
       .concat(merged.map((entry) => items.urlItem(entry, appPaths[entry.browser])));
     return JSON.stringify(items.historyOutput(found));
   } catch (e) {
