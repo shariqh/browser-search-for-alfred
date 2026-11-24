@@ -10,7 +10,7 @@ Search the tabs open in your running browsers, except private windows in Firefox
 
 * <kbd>↩</kbd> Bring the tab to the front.
 
-Firefox, Chrome, Brave and Edge never list private or incognito windows. Safari doesn't tell Alfred which windows are private, so tabs in its private windows may be listed.
+Firefox, Chrome, Brave and Edge never list private or incognito windows. Safari doesn't tell Alfred which windows are private, so tabs in its private windows are listed.
 
 Search your bookmarks via the `bmk` keyword.
 
