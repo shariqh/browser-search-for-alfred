@@ -42,6 +42,7 @@ Other facts: bookmarks and history list and open only `http`, `https` and `file`
 
 - `npm test` runs the unit tests. They run anywhere with Node 24.
 - `npm run test:macos` runs the tests that need macOS. They use `osascript` (JXA), `plutil` and `unzip`, and `zip` through `scripts/build.sh`, which macOS includes. No browser needs to be installed: the tests use a fake Firefox and a fixture folder as `HOME`, and never touch your real `~/Library` or any running browser.
+- `npm run lint:addon` runs `web-ext lint` on the add-on and must report 0 errors. Its one warning, `KEY_FIREFOX_ANDROID_UNSUPPORTED_BY_MIN_VERSION`, is expected: the add-on is desktop-only (it needs the macOS native helper), so do not "fix" it by adding `gecko_android`, which would offer the add-on on Android.
 - `npm run check:firefox` is not part of the tests. It writes the real registration to `~/Library` (see below) and opens a separate Firefox window with a throwaway profile. Your own Firefox is left alone. It sets `BSA_SKIP_APPLESCRIPT=1`, which makes `tab` skip Safari, Chrome, Brave and Edge, so no Apple Event goes to a real browser.
 - Under `BSA_TEST_CHANNEL`, every browser that is driven by Apple Events (Safari, Chrome, Brave, Edge) is replaced by a fake built from `BSA_TEST_TABS_<KEY>`. Never run the entry scripts without it and a fixture `HOME`.
 

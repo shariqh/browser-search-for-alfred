@@ -94,7 +94,7 @@ test("manifest.json", () => {
   assert.equal(manifest.browser_specific_settings.gecko.id, constants.ADDON_ID);
   assert.deepEqual(manifest.browser_specific_settings.gecko.data_collection_permissions, { required: ["browsingActivity"] });
   assert.equal(manifest.browser_specific_settings.gecko.strict_min_version, "140.0");
-  assert.equal(manifest.browser_specific_settings.gecko_android.strict_min_version, "142.0");
+  assert.equal(manifest.browser_specific_settings.gecko_android, undefined);
 });
 
 test("background.js connects to the native host by its fixed name", () => {
